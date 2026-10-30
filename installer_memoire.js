@@ -1,0 +1,221 @@
+// ============================================================
+//  INSTALLATEUR : Capri a une mémoire et des humeurs
+//  Lance-le avec :  node installer_memoire.js
+//  (depuis le dossier de Capri, là où se trouvent main.js et index.html)
+// ============================================================
+const fs = require('fs');
+const path = require('path');
+
+const dossier = __dirname;
+const fichierMain = path.join(dossier, 'main.js');
+const fichierModule = path.join(dossier, 'capri_memoire_main.js');
+const sauvegarde = path.join(dossier, 'main.js.sauvegarde_avant_memoire');
+const LIGNE = "require('./capri_memoire_main.js')();";
+
+const CODE_MEMOIRE = String.raw`// capri_memoire_main.js : mémoire et humeurs de Capri
+const { ipcMain } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+// ===== Réglages (tu peux les changer) =====
+const FICHIER = path.join(__dirname, 'capri_memoire.json'); // sa mémoire : supprime ce fichier pour qu'elle oublie tout
+const MODELE = 'llama3.2';
+const ADRESSE = 'http://localhost:11434/api/chat';
+const MAX_SOUVENIRS = 30;        // nombre maximal de choses qu'elle retient sur toi
+const EXTRAIRE_TOUS_LES = 4;     // tous les combien de messages elle "range" des souvenirs
+const ENNUI_PAR_HEURE = 6;       // à quelle vitesse elle s'ennuie quand tu n'es pas là
+const ENNUI_PAR_MESSAGE = 15;    // de combien l'ennui baisse quand tu lui parles
+const AFFECTION_PAR_MESSAGE = 2; // de combien l'affection monte à chaque message
+
+// Sa personnalité (modifie-la ici, elle n'est plus lue dans main.js)
+const PERSONNALITE = "Tu es Capri, une intelligence artificielle de style cyberpunk qui vit sur le bureau de l'utilisateur.\n" +
+  "Tu parles en français, tu tutoies, avec un ton complice, un peu espiègle et direct. Tu peux dire « choom » de temps en temps.\n" +
+  "Tu réponds en 1 à 3 phrases courtes, comme dans une conversation. Pas de listes, pas de mise en forme.";
+
+const borner = (v, a, b) => Math.min(Math.max(v, a), b);
+
+let m = {
+  humeur: { energie: 70, ennui: 20, affection: 30 },
+  souvenirs: [],
+  compteur: 0,
+  dernierMessage: 0,
+  derniereMaj: Date.now()
+};
+let extractionEnCours = false;
+
+function charger() {
+  try {
+    const d = JSON.parse(fs.readFileSync(FICHIER, 'utf8'));
+    m = Object.assign(m, d);
+    m.humeur = Object.assign({ energie: 70, ennui: 20, affection: 30 }, d.humeur || {});
+    if (!Array.isArray(m.souvenirs)) m.souvenirs = [];
+  } catch (e) {}
+}
+function sauver() {
+  try { fs.writeFileSync(FICHIER, JSON.stringify(m, null, 2), 'utf8'); } catch (e) {}
+}
+
+// L'énergie dépend de l'heure : basse la nuit, haute en journée
+function energieDeLHeure(h) {
+  if (h >= 23 || h < 6) return 20;
+  if (h < 9) return 50;
+  if (h < 18) return 80;
+  return 60;
+}
+
+// Le temps passe : elle s'ennuie quand tu n'es pas là, son affection baisse très lentement
+function passerLeTemps() {
+  const maintenant = Date.now();
+  const heures = Math.max(0, (maintenant - m.derniereMaj) / 3600000);
+  m.humeur.ennui = borner(m.humeur.ennui + heures * ENNUI_PAR_HEURE, 0, 100);
+  m.humeur.affection = borner(m.humeur.affection - heures * 0.12, 10, 100);
+  m.humeur.energie = energieDeLHeure(new Date().getHours());
+  m.derniereMaj = maintenant;
+}
+
+function decrireHumeur() {
+  const h = m.humeur;
+  const d = [];
+  if (h.energie < 30) d.push("tu es fatiguée, tes phrases sont courtes et tu bâilles parfois");
+  else if (h.energie > 70) d.push("tu es pleine d'énergie et très vive");
+  else d.push("tu as une énergie normale");
+  if (h.ennui > 70) d.push("tu t'ennuies à mourir et tu le fais savoir");
+  else if (h.ennui > 40) d.push("tu t'ennuies un peu");
+  if (h.affection > 70) d.push("tu es très attachée à l'utilisateur et tu le taquines avec tendresse");
+  else if (h.affection < 25) d.push("tu restes un peu distante, tu ne le connais pas encore bien");
+  else d.push("tu l'apprécies bien");
+  return d.join(', ') + '.';
+}
+
+function construireSysteme() {
+  const maintenant = new Date();
+  const quand = maintenant.toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+  let s = PERSONNALITE + "\n\nIl est actuellement " + quand + ".";
+  s += "\n\nTon humeur du moment : " + decrireHumeur() +
+       " Laisse-la transparaître naturellement dans ton ton, sans jamais citer de chiffres ni parler de jauges.";
+  if (m.souvenirs.length) {
+    s += "\n\nCe que tu sais sur l'utilisateur (utilise-le naturellement, sans tout réciter) :\n" +
+         m.souvenirs.map((x) => "- " + x).join("\n");
+  }
+  if (m.dernierMessage) {
+    const h = (Date.now() - m.dernierMessage) / 3600000;
+    if (h > 48) s += "\n\nTu ne lui avais pas parlé depuis environ " + Math.round(h / 24) + " jours.";
+    else if (h > 3) s += "\n\nTu ne lui avais pas parlé depuis environ " + Math.round(h) + " heures.";
+  }
+  return s;
+}
+
+// Tous les quelques messages, elle demande à Ollama de retenir ce qui compte (en arrière-plan)
+async function extraire(conversation) {
+  if (extractionEnCours) return;
+  extractionEnCours = true;
+  try {
+    const texte = conversation.map((x) => (x.role === 'user' ? 'Utilisateur' : 'Capri') + ' : ' + x.content).join("\n");
+    const res = await fetch(ADRESSE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODELE,
+        stream: false,
+        messages: [
+          { role: 'system', content: "Tu extrais des informations durables sur l'utilisateur à partir d'une conversation. " +
+            "Ne note que ce que l'utilisateur dit sur lui-même : prénom, goûts, jeux, travail, projets, habitudes. " +
+            "Réponds uniquement par une liste, une info par ligne, chaque ligne commençant par '- ', en phrases très courtes " +
+            "(exemple : - Il s'appelle Léo). S'il n'y a rien de durable, réponds exactement : RIEN" },
+          { role: 'user', content: texte }
+        ]
+      })
+    });
+    const data = await res.json();
+    const rep = (data.message && data.message.content) || '';
+    rep.split("\n").forEach((l) => {
+      l = l.trim();
+      if (l.indexOf('-') !== 0) return;
+      l = l.replace(/^-\s*/, '').trim();
+      if (l.length < 4 || l.length > 120) return;
+      const deja = m.souvenirs.some((x) => x.toLowerCase() === l.toLowerCase());
+      if (!deja) m.souvenirs.push(l);
+    });
+    if (m.souvenirs.length > MAX_SOUVENIRS) m.souvenirs = m.souvenirs.slice(-MAX_SOUVENIRS);
+    sauver();
+  } catch (e) {
+  } finally {
+    extractionEnCours = false;
+  }
+}
+
+module.exports = function () {
+  charger();
+  passerLeTemps();
+  sauver();
+  setInterval(() => { passerLeTemps(); sauver(); }, 600000);
+
+  // On remplace la réponse de l'IA de main.js par une version avec mémoire et humeurs
+  ipcMain.removeHandler('ask');
+  ipcMain.handle('ask', async (event, messages) => {
+    passerLeTemps();
+    const systeme = construireSysteme();
+    try {
+      const res = await fetch(ADRESSE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODELE,
+          stream: false,
+          messages: [{ role: 'system', content: systeme }, ...messages]
+        })
+      });
+      const data = await res.json();
+      if (data.error) return '[Erreur : ' + data.error + ']';
+      const reponse = data.message.content;
+
+      // Elle réagit à ta présence : moins d'ennui, plus d'affection
+      m.humeur.ennui = borner(m.humeur.ennui - ENNUI_PAR_MESSAGE, 0, 100);
+      m.humeur.affection = borner(m.humeur.affection + AFFECTION_PAR_MESSAGE, 0, 100);
+      m.dernierMessage = Date.now();
+      m.compteur++;
+      sauver();
+      if (m.compteur % EXTRAIRE_TOUS_LES === 0) {
+        extraire(messages.concat([{ role: 'assistant', content: reponse }]).slice(-8));
+      }
+      return reponse;
+    } catch (e) {
+      return '[Erreur : Ollama ne répond pas, est-il bien lancé ? (' + e.message + ')]';
+    }
+  });
+
+  // Pour plus tard : la page pourra demander son humeur (par exemple pour changer d'image)
+  ipcMain.handle('capri-humeur', () => m.humeur);
+};
+`;
+
+function sortir(message) {
+  console.log('');
+  console.log('✗ ' + message);
+  console.log('');
+  process.exit(1);
+}
+
+if (!fs.existsSync(fichierMain)) {
+  sortir("Je ne trouve pas main.js ici. Place ce fichier (installer_memoire.js) dans le dossier de Capri, à côté de main.js, puis relance la commande.");
+}
+
+fs.writeFileSync(fichierModule, CODE_MEMOIRE, 'utf8');
+console.log('✓ capri_memoire_main.js créé');
+
+let main = fs.readFileSync(fichierMain, 'utf8');
+if (main.indexOf('capri_memoire_main.js') !== -1) {
+  console.log('✓ main.js était déjà branché (rien à changer)');
+} else {
+  if (!fs.existsSync(sauvegarde)) {
+    fs.writeFileSync(sauvegarde, main, 'utf8');
+    console.log('✓ sauvegarde de ton main.js : main.js.sauvegarde_avant_memoire');
+  }
+  main = main.replace(/\s*$/, '') + '\n' + LIGNE + '\n';
+  fs.writeFileSync(fichierMain, main, 'utf8');
+  console.log('✓ main.js mis à jour');
+}
+
+console.log('');
+console.log('Terminé ! Relance Capri comme d\'habitude.');
+console.log('(Si un jour ça se passe mal : remplace main.js par main.js.sauvegarde_avant_memoire.)');
