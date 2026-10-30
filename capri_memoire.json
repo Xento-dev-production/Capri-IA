@@ -1,0 +1,42 @@
+{
+  "humeur": {
+    "energie": 50,
+    "ennui": 100,
+    "affection": 98.3755074333328
+  },
+  "souvenirs": [
+    "Il se fait tard, c'est un démon, hein ?",
+    "Il est un peu épuisé, même si tu n'es pas mal.",
+    "Il est épuisé, même si tu n'es pas mal, tu sais ?",
+    "Tu as essayé de me faire perdre, tu sais.",
+    "Il aime la scène, la révolte, les jeux vidéo.",
+    "Il aime la cyberpunk, le mot \"nouvelle vague\" de cool, Nova.",
+    "Il est un adolescent",
+    "Il s'habille",
+    "Il aime les jeux vidéo",
+    "Il s'appelle Capri.",
+    "Il est en retard.",
+    "Il n'a pas mentionné son prénom.",
+    "Il s'appelle Léo",
+    "Il est un étudiant en philosophie",
+    "Il aime les jeux de société, en particulier les cartes",
+    "Il travaille à temps partiel en librairie",
+    "RIEN",
+    "Il s'appelle Léo.",
+    "Il aime les jeux vidéo.",
+    "Il travaille à temps partiel.",
+    "Il a 12 ans (erroné, mais ça s'est dit en jeu).",
+    "Il aime la philosophie.",
+    "Il a 1000 euros",
+    "Il aime les édies",
+    "Il a 1973 euros",
+    "Il s'appelle Donovan",
+    "Il a 3000 euros",
+    "Il est en forme",
+    "Il aime faire des petits tours sur Internet",
+    "Il est toujours là pour soutenir"
+  ],
+  "compteur": 39,
+  "dernierMessage": 1793296973491,
+  "derniereMaj": 1793345708105
+}

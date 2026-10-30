@@ -1,0 +1,2969 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  :root { --vert: #00ffa3; --rouge: #ff2e63; --cadre: #ff4d5a; --cyan: #27e6ff; }
+
+  /* Permet d'animer la rotation propre de chaque fragment */
+  @property --spin {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+
+  body { user-select: none; }
+  #msg { user-select: text; }
+  html, body {
+    margin: 0; background: transparent; overflow: hidden;
+    font-family: Consolas, "Courier New", monospace; color: #e8fff6;
+  }
+
+  /* L'orbe : plat, 2D, plus lent */
+  #orb {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100vh; cursor: pointer;
+  }
+  /* Zone de l'orbe : boule centrale + fragments qui tournent */
+  .ball-zone { position: relative; width: 170px; height: 170px; }
+
+  .core {
+    position: absolute; left: 50%; top: 50%;
+    width: 22px; height: 22px; margin: -11px 0 0 -11px;
+    border-radius: 50%; background: var(--vert);
+    box-shadow: 0 0 12px var(--vert);
+    animation: pulse 3.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { transform: scale(0.8); } 50% { transform: scale(1.2); } }
+
+  /* Les fragments tournent autour du centre */
+  .orbit {
+    position: absolute; inset: 0;
+    filter: drop-shadow(0 0 3px rgba(0, 255, 163, 0.7));
+    animation: spin 9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Chaque fragment tourne aussi sur lui-même */
+  .frag {
+    position: absolute; left: 50%; top: 50%;
+    width: var(--w); height: var(--h);
+    margin: calc(var(--h) / -2) 0 0 calc(var(--w) / -2);
+    background: var(--col);
+    transform: rotate(var(--a)) translateY(calc(var(--r) * -1)) rotate(calc(var(--t) + var(--spin)));
+    animation: tourne 3s linear infinite;
+  }
+  @keyframes tourne { to { --spin: 360deg; } }
+  /* Un fragment sur deux tourne dans l'autre sens et à une autre vitesse */
+  .frag:nth-child(even) { animation-duration: 4.5s; animation-direction: reverse; }
+  .frag:nth-child(3n) { animation-duration: 2.2s; }
+
+  /* Trois formes d'éclats, façon verre brisé */
+  .s1 { clip-path: polygon(0 0, 100% 20%, 60% 100%); }
+  .s2 { clip-path: polygon(20% 0, 100% 0, 80% 100%, 0 70%); }
+  .s3 { clip-path: polygon(0 40%, 70% 0, 100% 60%, 30% 100%); }
+
+  /* Cadre rouge aux coins coupés autour de CALLING */
+  .callframe {
+    --c: 10px; margin-top: 10px;
+    background: var(--cadre); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  @keyframes alerte { 50% { background: var(--rouge); } }
+  .calling {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 16px 6px 10px; background: #000;
+    font-size: 13px; letter-spacing: 3px; color: var(--vert);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px),
+      calc(100% - 8px) 100%, 0 100%);
+  }
+  .calling::before {
+    content: ""; width: 7px; height: 7px; background: var(--rouge);
+  }
+
+  /* Trois points qui apparaissent puis disparaissent */
+  .d { opacity: 0; animation: dot 1.8s infinite; }
+  .d2 { animation-delay: 0.3s; }
+  .d3 { animation-delay: 0.6s; }
+  @keyframes dot {
+    0%, 15% { opacity: 0; }
+    30%, 75% { opacity: 1; }
+    90%, 100% { opacity: 0; }
+  }
+
+  /* La fenêtre d'appel */
+  #call {
+    display: none; flex-direction: column; box-sizing: border-box;
+    margin: 12px; height: calc(100vh - 24px); padding: 10px;
+    background: rgba(5, 5, 8, 0.92); border: 2px solid var(--vert);
+    border-radius: 14px; box-shadow: 0 0 10px var(--vert);
+  }
+
+  /* Les deux cadres façon Cyberpunk */
+  #frames { display: flex; gap: 10px; align-items: flex-end; flex-shrink: 0; }
+  .bloc { transition: opacity 0.25s; }
+  .bloc.inactif { opacity: 0.4; }
+  #capriBox { flex: 1; min-width: 0; }
+  #moiBox { width: 86px; flex-shrink: 0; }
+
+  .conn { font-size: 9px; color: var(--cadre); letter-spacing: 1px; margin-bottom: 2px; }
+  .nom {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    font-family: Bahnschrift, "Segoe UI", Arial, sans-serif;
+    font-size: 20px; font-weight: bold; letter-spacing: 2px;
+    color: var(--cyan); text-shadow: 0 0 6px rgba(39, 230, 255, 0.5);
+  }
+  #moiBox .nom { font-size: 16px; }
+
+  /* Le cadre : contour rouge aux coins coupés */
+  .frame {
+    --c: 14px;
+    background: var(--cadre); padding: 2px; box-sizing: border-box;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, calc(var(--c) - 2px) 100%, 0 calc(100% - 6px));
+  }
+  .frame-in {
+    --d: calc(var(--c) - 2px);
+    position: relative; overflow: hidden; height: 100%; background-color: #000;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--d)),
+      calc(100% - var(--d)) 100%, calc(var(--d) - 2px) 100%, 0 calc(100% - 5px));
+  }
+  .capriframe { height: 180px; }
+  .moiframe { --c: 9px; height: 86px; }
+
+  /* Petits points rouges dans le fond du cadre */
+  .dots {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(255, 77, 90, 0.55) 1px, transparent 1.6px);
+    background-size: 18px 18px;
+  }
+  .moi-in { display: flex; align-items: center; justify-content: center; }
+
+  /* L'image avec grésillements (--img change à chaque réponse) */
+  #portrait {
+    --img: url(capri.jpg);
+    animation: flick 6s steps(1) infinite;
+  }
+  #portrait .layer {
+    position: absolute; inset: 0;
+    background-image: var(--img); background-size: cover; background-position: center;
+  }
+  #portrait .g1, #portrait .g2 { background-blend-mode: multiply; clip-path: inset(0 0 100% 0); }
+  #portrait .g1 { background-color: #00ffa3; animation: glitchA 3.4s steps(1) infinite; }
+  #portrait .g2 { background-color: #ff2e63; animation: glitchB 4.3s steps(1) infinite; }
+  #portrait .scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 3px);
+  }
+  @keyframes glitchA {
+    0%, 100% { clip-path: inset(0 0 100% 0); }
+    10% { clip-path: inset(20% 0 65% 0); transform: translateX(-9px); }
+    12% { clip-path: inset(55% 0 30% 0); transform: translateX(11px); }
+    14% { clip-path: inset(0 0 100% 0); }
+    50% { clip-path: inset(70% 0 12% 0); transform: translateX(8px); }
+    52% { clip-path: inset(5% 0 85% 0); transform: translateX(-11px); }
+    54% { clip-path: inset(0 0 100% 0); }
+    80% { clip-path: inset(40% 0 45% 0); transform: translateX(-7px); }
+    82% { clip-path: inset(0 0 100% 0); }
+  }
+  @keyframes glitchB {
+    0%, 100% { clip-path: inset(0 0 100% 0); }
+    22% { clip-path: inset(35% 0 52% 0); transform: translateX(10px); }
+    24% { clip-path: inset(80% 0 5% 0); transform: translateX(-9px); }
+    26% { clip-path: inset(0 0 100% 0); }
+    63% { clip-path: inset(12% 0 75% 0); transform: translateX(-12px); }
+    65% { clip-path: inset(60% 0 25% 0); transform: translateX(9px); }
+    67% { clip-path: inset(0 0 100% 0); }
+    90% { clip-path: inset(25% 0 60% 0); transform: translateX(7px); }
+    92% { clip-path: inset(0 0 100% 0); }
+  }
+  @keyframes flick {
+    0%, 100% { filter: none; }
+    41% { filter: brightness(1.7) contrast(1.4); }
+    42% { filter: none; }
+    77% { filter: brightness(0.6) hue-rotate(40deg); }
+    78% { filter: brightness(1.5); }
+    79% { filter: none; }
+  }
+
+  /* Discussion */
+  #chat {
+    flex: 1; overflow-y: auto; margin-top: 12px; min-height: 0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  /* Barre de défilement du chat */
+  #chat::-webkit-scrollbar {
+    width: 8px;
+  }
+  #chat::-webkit-scrollbar-track {
+    background: #000;
+    border-left: 1px solid var(--cadre);
+  }
+  #chat::-webkit-scrollbar-thumb {
+    background: var(--vert);
+    box-shadow: 0 0 6px var(--vert);
+  }
+  #chat::-webkit-scrollbar-thumb:hover {
+    background: var(--rouge);
+    box-shadow: 0 0 6px var(--rouge);
+  }
+  /* Enlève les flèches haut et bas */
+  #chat::-webkit-scrollbar-button {
+    display: none;
+  }
+  .row { display: flex; gap: 8px; align-items: flex-start; }
+  .row.moi { flex-direction: row-reverse; }
+  .tag {
+    flex-shrink: 0; padding: 3px 7px; font-size: 11px;
+    font-weight: bold; letter-spacing: 2px; border: 1px solid;
+  }
+  .capri .tag { color: var(--cyan); border-color: var(--cyan); }
+  .moi .tag { color: var(--cadre); border-color: var(--cadre); }
+  .txt { font-size: 13px; line-height: 1.4; }
+  .moi .txt { text-align: right; }
+
+  #inputrow { display: flex; gap: 6px; margin-top: 8px; }
+  #msg {
+    flex: 1; background: #000; color: #e8fff6; border: 1px solid var(--cadre);
+    padding: 7px; font-family: inherit; font-size: 13px; outline: none;
+  }
+  #send {
+    background: transparent; color: var(--cadre); border: 1px solid var(--cadre);
+    padding: 0 12px; cursor: pointer; font-family: inherit;
+  }
+  #hangup {
+    margin-top: 8px; background: transparent; color: var(--vert);
+    border: 1px solid var(--vert); padding: 6px; cursor: pointer;
+    font-family: inherit; letter-spacing: 2px;
+  }
+
+  /* Menu clic droit cyberpunk */
+  #menu {
+    display: none; position: fixed; z-index: 200; --c: 10px;
+    background: var(--vert); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+  }
+  #menu .in {
+    background: #000; min-width: 160px; padding: 4px 0;
+    border-left: 3px solid var(--rouge); border-right: 3px solid var(--rouge);
+    box-shadow: inset 10px 0 12px -8px var(--rouge), inset -10px 0 12px -8px var(--rouge);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c) + 2px),
+      calc(100% - var(--c) + 2px) 100%, 0 100%);
+  }
+  #menu button {
+    display: block; width: 100%; text-align: left; background: transparent; border: 0;
+    color: var(--vert); font-family: inherit; font-size: 13px; letter-spacing: 3px;
+    padding: 8px 16px; cursor: pointer; text-shadow: 0 0 6px rgba(0, 255, 163, 0.6);
+  }
+  #menu button::before { content: "▸ "; color: var(--rouge); opacity: 0; }
+  #menu button:hover { background: rgba(255, 46, 99, 0.18); color: var(--cyan); }
+  #menu button:hover::before { opacity: 1; }
+
+  /* Bulle de dialogue de Capri (style cyberpunk, comme le CALLING) */
+  #bulle {
+    display: none; position: absolute; left: 0; top: 0; z-index: 50;
+    pointer-events: none; will-change: transform;
+  }
+  .bulle-cadre {
+    --c: 12px; background: var(--cadre); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  .bulle-in {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: #000; padding: 7px 16px 7px 10px; max-width: 210px;
+    font-size: 13px; line-height: 1.35; letter-spacing: 1px; color: var(--vert);
+    text-shadow: 0 0 6px rgba(0, 255, 163, 0.5);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px),
+      calc(100% - 10px) 100%, 0 100%);
+  }
+  .bulle-in::before {
+    content: ""; flex-shrink: 0; width: 7px; height: 7px; margin-top: 5px;
+    background: var(--rouge);
+  }
+  /* La petite pointe qui montre Capri */
+  .queue {
+    position: absolute; left: 18px; bottom: -9px; width: 14px; height: 11px;
+    background: var(--cadre); clip-path: polygon(0 0, 100% 0, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+
+  /* Mode balade */
+  #anim { display: none; position: fixed; inset: 0; overflow: hidden; }
+  #walker { position: absolute; bottom: 0; left: 0; cursor: pointer; will-change: transform; }
+  #walker img { display: block; filter: drop-shadow(0 0 6px rgba(0, 255, 163, 0.5));
+    -webkit-user-drag: none; user-select: none; }
+  /* L'écrasement part du bas du sprite */
+  #sprite { transform-origin: 50% 100%; }
+
+  /* ===== La puce (référence à Cyberpunk) ===== */
+  #puce {
+    display: none; position: absolute; left: 0; top: 0; z-index: 60;
+    cursor: grab; will-change: transform; touch-action: none;
+    filter: drop-shadow(0 0 4px rgba(39, 230, 255, 0.95)) drop-shadow(0 0 14px rgba(39, 230, 255, 0.35));
+    -webkit-user-drag: none; user-select: none;
+  }
+  #puce.tenue { cursor: grabbing; }
+
+  /* Les deux ports USB, en haut à droite de l'écran */
+  /* Hors balade, les ports sont dans une petite fenêtre à part (voir main.js). Pendant la balade, ce sont ceux-ci. */
+  #usb { display: none; position: fixed; top: 0; right: 0; z-index: 50; pointer-events: none;
+    transform: scale(1.25); transform-origin: top right; }
+  body.enAnim #usb { display: block; }
+  .ports { display: flex; gap: 14px; justify-content: flex-end; }
+  .port {
+    --c: 8px; position: relative; width: 66px; height: 24px;
+    background: var(--cadre); padding: 2px; box-sizing: border-box;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  .port-in { position: relative; height: 100%; background: #000; }
+  /* La languette métallique au fond du port */
+  .port-in::after {
+    content: ""; position: absolute; left: 8px; right: 8px; top: 50%;
+    height: 4px; margin-top: -2px; background: #3a4558;
+  }
+  .port.survol { background: var(--vert); animation: none; }
+  .port.survol .port-in::after { background: var(--vert); box-shadow: 0 0 8px var(--vert); }
+  #usbHint {
+    display: none; margin-top: 6px; text-align: right; font-size: 10px;
+    letter-spacing: 3px; color: var(--cadre); text-shadow: 0 0 6px rgba(255, 77, 90, 0.6);
+    animation: dot 1.8s infinite;
+  }
+
+  /* La puce : une petite carte à contacts dorés, façon "shard" de Cyberpunk */
+  .puce-corps {
+    --c: 12px; width: 100%; height: 100%; box-sizing: border-box; padding: 2px; background: var(--cyan);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+  }
+  .puce-in {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse at 30% 30%, rgba(255, 46, 99, 0.3), transparent 62%),
+                linear-gradient(145deg, #0a1822 0%, #12060d 100%);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c) + 2px),
+      calc(100% - var(--c) + 2px) 100%, 0 100%);
+  }
+  .puce-pins {
+    position: absolute; left: 9px; right: 9px; top: 0; height: 6px;
+    background: repeating-linear-gradient(90deg, #e0b84e 0 5px, transparent 5px 8px);
+    box-shadow: 0 1px 4px rgba(224, 184, 78, 0.6);
+  }
+  #puceImg {
+    position: absolute; left: 5px; top: 9px; width: calc(100% - 10px); height: calc(100% - 14px);
+    object-fit: contain; -webkit-user-drag: none;
+  }
+  .puce-led {
+    position: absolute; right: 7px; bottom: 6px; width: 5px; height: 5px; background: var(--vert);
+    box-shadow: 0 0 6px var(--vert); animation: tagpulse 1s ease-in-out infinite;
+  }
+
+  /* Le viseur autour de la puce : quatre coins qui pulsent (vert quand un port est détecté) */
+  #puceCible {
+    display: none; position: absolute; left: 0; top: 0; z-index: 58; pointer-events: none;
+    --k: var(--cyan);
+    background:
+      linear-gradient(var(--k), var(--k)) 0 0 / 14px 2px no-repeat,
+      linear-gradient(var(--k), var(--k)) 0 0 / 2px 14px no-repeat,
+      linear-gradient(var(--k), var(--k)) 100% 0 / 14px 2px no-repeat,
+      linear-gradient(var(--k), var(--k)) 100% 0 / 2px 14px no-repeat,
+      linear-gradient(var(--k), var(--k)) 0 100% / 14px 2px no-repeat,
+      linear-gradient(var(--k), var(--k)) 0 100% / 2px 14px no-repeat,
+      linear-gradient(var(--k), var(--k)) 100% 100% / 14px 2px no-repeat,
+      linear-gradient(var(--k), var(--k)) 100% 100% / 2px 14px no-repeat;
+    filter: drop-shadow(0 0 4px var(--k));
+    animation: cible 1s ease-in-out infinite;
+  }
+  #puceCible.vert { --k: var(--vert); }
+  @keyframes cible { 50% { scale: 1.09; } }
+
+  /* L'étiquette "PUCE" qui flotte au-dessus, reliée au viseur par un petit trait */
+  #puceTag { display: none; position: absolute; left: 0; top: 0; z-index: 61; pointer-events: none; white-space: nowrap; }
+  .tag-cadre {
+    --c: 10px; background: var(--cadre); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  .tag-in {
+    background: #000; padding: 5px 16px 6px 10px; animation: tagglitch 3.2s steps(1) infinite;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px),
+      calc(100% - 8px) 100%, 0 100%);
+  }
+  .tag-t {
+    display: flex; align-items: center; gap: 8px; font-size: 15px; letter-spacing: 6px;
+    color: var(--vert); text-shadow: 0 0 7px rgba(0, 255, 163, 0.6);
+  }
+  .tag-t::before { content: ""; width: 6px; height: 6px; background: var(--rouge); }
+  .tag-s { margin-top: 2px; font-size: 9px; letter-spacing: 2px; color: var(--cyan); }
+  .tag-ligne {
+    position: relative; width: 1px; height: 14px; margin: 0 auto;
+    background: var(--cyan); box-shadow: 0 0 5px var(--cyan);
+  }
+  .tag-ligne::after {
+    content: ""; position: absolute; left: -3px; bottom: -3px; width: 7px; height: 7px;
+    background: var(--cyan); transform: rotate(45deg);
+  }
+  @keyframes tagglitch {
+    0%, 100% { transform: none; filter: none; }
+    40% { transform: translateX(-2px); }
+    41% { transform: translateX(3px); filter: hue-rotate(60deg); }
+    42% { transform: none; filter: none; }
+    80% { transform: translateX(2px); }
+    81% { transform: none; }
+  }
+  /* La lueur de la puce posée au sol */
+  #puceAura {
+    display: none; position: absolute; left: 0; top: 0; z-index: 59; width: 110px; height: 14px;
+    border-radius: 50%; pointer-events: none; animation: tagpulse 1.2s ease-in-out infinite;
+    background: radial-gradient(ellipse, rgba(39, 230, 255, 0.75) 0, rgba(39, 230, 255, 0.25) 45%, transparent 72%);
+  }
+  @keyframes tagpulse { 50% { opacity: 0.45; } }
+
+  /* Un port où la puce est branchée */
+  .port.connecte { background: var(--vert); animation: none; }
+  .port.connecte .port-in { box-shadow: inset 0 0 10px var(--vert); }
+  .port.connecte .port-in::after { background: var(--vert); box-shadow: 0 0 8px var(--vert); }
+  .port.flash { background: #fff; }
+  #flashUsb {
+    position: absolute; inset: 0; z-index: 96; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 95% 0%, rgba(39, 230, 255, 0.6), rgba(39, 230, 255, 0.15) 40%, transparent 70%);
+  }
+
+  /* ===== Les trois fenêtres de "hacking" ===== */
+  #reboot { display: none; position: absolute; inset: 0; z-index: 70; pointer-events: none; }
+  .rb-scene {
+    position: absolute; left: 50%; top: 0; width: 1400px; height: 900px; margin-left: -700px;
+    transform-origin: top center;
+  }
+  .rb-fenetre { display: none; position: absolute; }
+  .rb-cadre {
+    --c: 16px; background: var(--cadre); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  .rb-cadre.cy { background: var(--cyan); animation: none; }
+  .rb-cadre.ro { background: var(--rouge); animation: none; }
+  .rb-in {
+    position: relative; box-sizing: border-box; padding: 18px 24px 18px 20px; background: #000;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px),
+      calc(100% - 14px) 100%, 0 100%);
+  }
+  .rb-tete { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .reboot-titre {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 27px; letter-spacing: 6px; color: var(--vert);
+    text-shadow: 0 0 9px rgba(0, 255, 163, 0.6);
+  }
+  .reboot-titre.pt { font-size: 18px; letter-spacing: 4px; }
+  .reboot-titre::before { content: ""; width: 10px; height: 10px; background: var(--rouge); flex-shrink: 0; }
+  .rb-meta { font-size: 11px; letter-spacing: 2px; color: var(--cadre); text-align: right; }
+  .reboot-sous {
+    margin: 10px 0 12px; font-size: 14px; letter-spacing: 3px; color: var(--cyan);
+    text-shadow: 0 0 6px rgba(39, 230, 255, 0.5);
+  }
+  .rb-corps { display: flex; gap: 16px; margin-bottom: 14px; }
+  .reboot-log {
+    flex: 1; min-width: 0; height: 310px; overflow: hidden; padding: 10px 12px; box-sizing: border-box;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    border: 1px solid rgba(0, 255, 163, 0.35); background: rgba(0, 255, 163, 0.05);
+    font-size: 13px; line-height: 1.5; color: var(--vert); text-shadow: 0 0 5px rgba(0, 255, 163, 0.5);
+  }
+  .reboot-log.err { height: 175px; font-size: 12px; margin-top: 12px; border-color: rgba(255, 46, 99, 0.45); background: rgba(255, 46, 99, 0.05); }
+  .lg { display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; }
+  .lg .lt { overflow: hidden; }
+  .lg .ok { color: var(--vert); }
+  .lg .warn { color: #ffe600; text-shadow: 0 0 5px rgba(255, 230, 0, 0.5); }
+  .lg .bad { color: var(--rouge); text-shadow: 0 0 5px rgba(255, 46, 99, 0.6); }
+  .rb-jauges {
+    width: 230px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between;
+    padding: 10px 12px; box-sizing: border-box; font-size: 11px; letter-spacing: 2px; color: var(--cadre);
+    border: 1px solid rgba(255, 77, 90, 0.45); background: rgba(255, 77, 90, 0.05);
+  }
+  .jauge { display: grid; grid-template-columns: 1fr auto; row-gap: 5px; }
+  .jauge b { font-weight: normal; color: var(--cyan); }
+  .jauge .jb { grid-column: 1 / 3; }
+  .jb { height: 10px; padding: 1px; border: 1px solid var(--cadre); box-sizing: border-box; }
+  .jf {
+    height: 100%; width: 0%; box-shadow: 0 0 5px var(--cyan);
+    background: repeating-linear-gradient(90deg, var(--cyan) 0 4px, transparent 4px 6px);
+  }
+  .reboot-barre { height: 30px; padding: 4px; border: 1px solid var(--cadre); background: #000; box-sizing: border-box; }
+  .reboot-fill {
+    height: 100%; width: 0%;
+    background: repeating-linear-gradient(90deg, var(--vert) 0 7px, transparent 7px 9px);
+    box-shadow: 0 0 7px var(--vert);
+  }
+  .rb-pied { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .reboot-stats { font-size: 11px; letter-spacing: 1px; color: var(--cadre); }
+  .reboot-pct { font-size: 24px; letter-spacing: 2px; color: var(--vert); text-shadow: 0 0 9px rgba(0, 255, 163, 0.6); }
+  /* Fenêtre ACCÈS ROOT : une barre par tâche */
+  .rt { margin-bottom: 11px; font-size: 11px; letter-spacing: 1.5px; }
+  .rt-l { display: flex; gap: 10px; margin-bottom: 4px; color: var(--vert); }
+  .rt-l span { flex: 1; }
+  .rt-l em { font-style: normal; color: #6b7a88; }
+  .rt-l em.cours { color: var(--cyan); }
+  .rt-l em.fin { color: var(--vert); }
+  .rt-l b { width: 38px; text-align: right; font-weight: normal; color: var(--cyan); }
+  .rt .jb { border-color: var(--cyan); }
+  .rt .jf { background: repeating-linear-gradient(90deg, var(--vert) 0 5px, transparent 5px 7px); box-shadow: 0 0 5px var(--vert); }
+  /* Lignes d'écran de vieux moniteur, qui scintillent légèrement */
+  .rb-scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0 1px, transparent 1px 3px);
+    animation: scanflick 3s steps(1) infinite;
+  }
+  @keyframes scanflick { 0%, 100% { opacity: 1; } 47% { opacity: 0.7; } 48% { opacity: 1; } 90% { opacity: 0.8; } 91% { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div id="orb">
+  <div class="ball-zone">
+
+    <!-- Les fragments : ils tournent autour de la boule et sur eux-mêmes -->
+    <div class="orbit">
+      <span class="frag s1" style="--a:0deg;   --r:32px; --w:14px; --h:10px; --t:20deg;  --col:var(--vert)"></span>
+      <span class="frag s2" style="--a:22deg;  --r:52px; --w:9px;  --h:9px;  --t:-20deg; --col:var(--rouge)"></span>
+      <span class="frag s3" style="--a:45deg;  --r:40px; --w:11px; --h:8px;  --t:50deg;  --col:var(--vert)"></span>
+      <span class="frag s1" style="--a:67deg;  --r:60px; --w:8px;  --h:11px; --t:-40deg; --col:#000"></span>
+      <span class="frag s2" style="--a:90deg;  --r:34px; --w:12px; --h:12px; --t:-30deg; --col:#000"></span>
+      <span class="frag s3" style="--a:112deg; --r:56px; --w:10px; --h:8px;  --t:30deg;  --col:var(--vert)"></span>
+      <span class="frag s1" style="--a:135deg; --r:42px; --w:9px;  --h:12px; --t:-15deg; --col:var(--rouge)"></span>
+      <span class="frag s2" style="--a:157deg; --r:62px; --w:11px; --h:9px;  --t:45deg;  --col:#000"></span>
+      <span class="frag s3" style="--a:180deg; --r:38px; --w:14px; --h:9px;  --t:60deg;  --col:var(--rouge)"></span>
+      <span class="frag s1" style="--a:202deg; --r:54px; --w:8px;  --h:10px; --t:-60deg; --col:var(--vert)"></span>
+      <span class="frag s2" style="--a:225deg; --r:33px; --w:13px; --h:10px; --t:40deg;  --col:var(--vert)"></span>
+      <span class="frag s3" style="--a:247deg; --r:58px; --w:10px; --h:9px;  --t:-25deg; --col:var(--rouge)"></span>
+      <span class="frag s1" style="--a:270deg; --r:44px; --w:10px; --h:14px; --t:-10deg; --col:#000"></span>
+      <span class="frag s2" style="--a:292deg; --r:50px; --w:9px;  --h:11px; --t:35deg;  --col:var(--vert)"></span>
+      <span class="frag s3" style="--a:315deg; --r:39px; --w:12px; --h:10px; --t:-50deg; --col:var(--rouge)"></span>
+      <span class="frag s1" style="--a:337deg; --r:61px; --w:11px; --h:8px;  --t:20deg;  --col:#000"></span>
+    </div>
+
+    <div class="core"></div>
+  </div>
+
+  <div class="callframe">
+    <div class="calling">CALLING<span class="d">.</span><span class="d d2">.</span><span class="d d3">.</span></div>
+  </div>
+</div>
+
+<div id="call">
+  <div id="frames">
+
+    <div class="bloc" id="capriBox">
+      <div class="conn" id="conn">CONNECTION 541.44.10</div>
+      <div class="nom">
+        <svg width="14" height="22" viewBox="0 0 14 22" fill="none" stroke="#27e6ff" stroke-width="2">
+          <rect x="1" y="1" width="12" height="20" rx="2"/>
+          <line x1="4" y1="17" x2="10" y2="17"/>
+        </svg>
+        CAPRI
+      </div>
+      <div class="frame capriframe">
+        <div class="frame-in" id="portrait">
+          <div class="layer"></div>
+          <div class="layer g1"></div>
+          <div class="layer g2"></div>
+          <div class="dots"></div>
+          <div class="scan"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bloc" id="moiBox">
+      <div class="nom">MOI</div>
+      <div class="frame moiframe">
+        <div class="frame-in moi-in">
+          <div class="dots"></div>
+          <svg width="46" height="46" viewBox="0 0 46 46" fill="none" stroke="#ff4d5a" stroke-width="2.5">
+            <circle cx="23" cy="15" r="8"/>
+            <path d="M6 42 C6 30 14 26 23 26 C32 26 40 30 40 42"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="chat"></div>
+  <div id="inputrow">
+    <input id="msg" placeholder="Écris à Capri..." autocomplete="off">
+    <button id="send">▶</button>
+  </div>
+  <button id="hangup">RACCROCHER</button>
+</div>
+
+<div id="anim">
+  <div id="walker"><img id="sprite" src="capri7.png" draggable="false"></div>
+  <div id="bulle"><div class="bulle-cadre"><div class="bulle-in" id="bulleTxt"></div></div><div class="queue" id="queue"></div></div>
+
+  <!-- La puce, les ports USB et l'interface de réinitialisation -->
+  <div id="puceAura"></div>
+  <div id="puceCible"></div>
+  <div id="puce"><div class="puce-corps"><div class="puce-in">
+    <div class="puce-pins"></div>
+    <img id="puceImg" src="puce_gauche.png" draggable="false">
+    <i class="puce-led"></i>
+  </div></div></div>
+  <div id="puceTag">
+    <div class="tag-cadre"><div class="tag-in">
+      <div class="tag-t">PUCE</div>
+      <div class="tag-s">▲ INSÈRE-MOI DANS UN PORT USB</div>
+    </div></div>
+    <div class="tag-ligne"></div>
+  </div>
+  <div id="flashUsb"></div>
+  <div id="reboot">
+    <div class="rb-scene" id="rbScene">
+
+      <!-- Fenêtre 1 : RÉINITIALISATION -->
+      <div class="rb-fenetre" id="rbMain" style="left:40px; top:30px; width:800px">
+        <div class="rb-cadre" id="rebootCadre"><div class="rb-in">
+          <div class="rb-tete">
+            <div class="reboot-titre" id="rebootTitre">RÉINITIALISATION</div>
+            <div class="rb-meta" id="rebootMeta">SESSION 0000-0000  //  ACCÈS ROOT</div>
+          </div>
+          <div class="reboot-sous" id="rebootSous">CAPRI // PUCE DÉTECTÉE</div>
+          <div class="rb-corps">
+            <div class="reboot-log" id="rebootLog"></div>
+            <div class="rb-jauges">
+              <div class="jauge"><span>NOYAU</span><b id="v1">0%</b><div class="jb"><div class="jf" id="j1"></div></div></div>
+              <div class="jauge"><span>MÉMOIRE</span><b id="v2">0%</b><div class="jb"><div class="jf" id="j2"></div></div></div>
+              <div class="jauge"><span>IMPLANTS</span><b id="v3">0%</b><div class="jb"><div class="jf" id="j3"></div></div></div>
+              <div class="jauge"><span>PERSONNALITÉ</span><b id="v4">0%</b><div class="jb"><div class="jf" id="j4"></div></div></div>
+            </div>
+          </div>
+          <div class="reboot-barre"><div class="reboot-fill" id="rebootFill"></div></div>
+          <div class="rb-pied">
+            <div class="reboot-stats" id="rebootStats">PORT USB  //  DÉBIT 0 MO/S  //  TEMP 0°C  //  SECTEUR 0x0000</div>
+            <div class="reboot-pct" id="rebootPct">0%</div>
+          </div>
+          <div class="rb-scan"></div>
+        </div></div>
+      </div>
+
+      <!-- Fenêtre 2 : ACCÈS ROOT (plein de barres de progression) -->
+      <div class="rb-fenetre" id="rbRoot" style="left:870px; top:110px; width:490px">
+        <div class="rb-cadre cy" id="rootCadre"><div class="rb-in">
+          <div class="rb-tete">
+            <div class="reboot-titre pt" id="rootTitre">ACCÈS ROOT</div>
+            <div class="rb-meta">UID 0  //  NIVEAU MAX</div>
+          </div>
+          <div class="reboot-sous" id="rootSous">capri@night-city:~#  ÉLÉVATION DES PRIVILÈGES...</div>
+          <div id="rootListe"></div>
+          <div class="rb-scan"></div>
+        </div></div>
+      </div>
+
+      <!-- Fenêtre 3 : JOURNAL D'ERREURS -->
+      <div class="rb-fenetre" id="rbErr" style="left:220px; top:575px; width:740px">
+        <div class="rb-cadre ro" id="errCadre"><div class="rb-in">
+          <div class="rb-tete">
+            <div class="reboot-titre pt" id="errTitre">JOURNAL D'ERREURS</div>
+            <div class="rb-meta" id="errBilan">DÉTECTÉES 0  //  RÉPARÉES 0  //  CRITIQUES 0</div>
+          </div>
+          <div class="reboot-log err" id="errLog"></div>
+          <div class="rb-scan"></div>
+        </div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="usb">
+  <div class="ports">
+    <div class="port" id="port1"><div class="port-in"></div></div>
+    <div class="port" id="port2"><div class="port-in"></div></div>
+  </div>
+  <div id="usbHint">INSÈRE LA PUCE</div>
+</div>
+
+<div id="menu"><div class="in">
+  <button id="mHang">RACCROCHER</button>
+  <button id="mAnim">ANIMER</button>
+  <button id="mDesanim">DÉSANIMER</button>
+</div></div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+  const orb = document.getElementById('orb');
+  const call = document.getElementById('call');
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('msg');
+  const portrait = document.getElementById('portrait');
+  const capriBox = document.getElementById('capriBox');
+  const moiBox = document.getElementById('moiBox');
+  let greeted = false;
+  let busy = false;
+  let aDeplace = false;  // vrai si on vient de déplacer une fenêtre à la souris (ce n'est pas un clic)
+  const history = [];
+
+  // Les images de Capri : pour en ajouter, ajoute simplement son nom dans la liste
+  const IMAGES = ['capri.jpg', 'capri2.jpg', 'capri3.jpg', 'capri4.jpg', 'capri5.jpg'];
+  let imageActuelle = 0;
+  IMAGES.forEach((nom) => { new Image().src = nom; }); // pré-chargement
+
+  // Change d'image au hasard, jamais deux fois la même d'affilée
+  function changerImage() {
+    let n;
+    do {
+      n = Math.floor(Math.random() * IMAGES.length);
+    } while (n === imageActuelle && IMAGES.length > 1);
+    imageActuelle = n;
+    portrait.style.setProperty('--img', "url('" + IMAGES[n] + "')");
+  }
+
+  // Allume le cadre de celui qui parle ('capri', 'moi', ou null pour les deux)
+  function parle(qui) {
+    capriBox.classList.toggle('inactif', qui === 'moi');
+    moiBox.classList.toggle('inactif', qui === 'capri');
+  }
+
+  // Numéro de connexion différent à chaque appel
+  function chiffres(n) {
+    let s = '';
+    for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+    return s;
+  }
+
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const borner = (v, min, max) => Math.min(Math.max(v, min), max);
+
+  function addRow(who) {
+    const row = document.createElement('div');
+    row.className = 'row ' + who;
+    row.innerHTML = '<div class="tag">' + (who === 'capri' ? 'CAPRI' : 'MOI') +
+                    '</div><div class="txt"></div>';
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
+    return row.querySelector('.txt');
+  }
+
+  async function typeInto(el, text, speed) {
+    for (const c of text) {
+      el.textContent += c;
+      chat.scrollTop = chat.scrollHeight;
+      await wait(speed);
+    }
+  }
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text || busy) return;
+    busy = true;
+    input.value = '';
+
+    parle('moi');
+    await typeInto(addRow('moi'), text, 12);
+    history.push({ role: 'user', content: text });
+
+    parle('capri');
+    const capriTxt = addRow('capri');
+    capriTxt.textContent = '···';
+    const reply = await ipcRenderer.invoke('ask', history);
+    capriTxt.textContent = '';
+
+    if (reply.startsWith('[Erreur')) {
+      history.pop();
+    } else {
+      history.push({ role: 'assistant', content: reply });
+      while (history.length > 20) history.splice(0, 2);
+      changerImage(); // nouvelle image à chaque réponse
+    }
+    await typeInto(capriTxt, reply, 28);
+    parle(null);
+    busy = false;
+    input.focus();
+  }
+
+  orb.addEventListener('click', async () => {
+    if (aDeplace) { aDeplace = false; return; } // on vient de la déplacer : ce n'est pas un clic
+    ipcRenderer.send('mode', 'call');
+    orb.style.display = 'none';
+    call.style.display = 'flex';
+    document.getElementById('conn').textContent =
+      'CONNECTION ' + chiffres(3) + '.' + chiffres(2) + '.' + chiffres(2);
+    if (!greeted) {
+      greeted = true;
+      parle('capri');
+      await typeInto(addRow('capri'), 'Salut, choom. Ça faisait un moment.', 28);
+      await wait(600);
+      await typeInto(addRow('capri'), "Je suis là. Qu'est-ce qu'on fait aujourd'hui ?", 28);
+      parle(null);
+    }
+    input.focus();
+  });
+
+  document.getElementById('send').addEventListener('click', send);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+  // ===== État de la balade =====
+  const anim = document.getElementById('anim');
+  const walker = document.getElementById('walker');
+  const sprite = document.getElementById('sprite');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  let ax = 0, adir = 1, etat = 'cache', finEtat = 0, raf = null;
+  let ay = 0;                // hauteur de Capri au-dessus du bas de l'écran (0 = au sol)
+  let cibleAx = 0, cibleAy = 0; // où elle doit se trouver quand elle est assise (suit la fenêtre)
+  let decalageX = 0;         // sa place sur la fenêtre (distance depuis le bord gauche)
+  let fenetre = null;        // la fenêtre sur laquelle elle est assise
+  let fermeeEnAttente = false;
+  let enAnim = false;        // vrai quand Capri se balade
+  let session = 0;           // change à chaque début/fin de balade (annule les anciennes animations)
+  let survolCapri = false;   // la souris est sur Capri
+  let menuOuvert = false;
+
+  // Capri attrapée par la souris
+  let tenue = false;         // vrai tant qu'on reste appuyé sur Capri
+  let phi = 0, omega = 0;    // inclinaison de Capri (radians) et sa vitesse de balancement
+  let rot = 0;               // la même inclinaison, en degrés, pour l'affichage
+  let vs = 0;                // vitesse (lissée) de la souris vers la droite ou la gauche
+  let curX = 0, curY = 0;    // position de la souris
+  let curXAvant = 0;
+  let derniereFrame = 0;
+  let vChute = 0;            // vitesse de chute quand on la lâche
+  let prochaineBulleAtt = 0; // prochaine phrase pendant qu'on la tient
+  let vxChute = 0;           // vitesse vers la droite ou la gauche gardée quand on la lâche
+  let vsY = 0, accX = 0, accY = 0, curYAvant = 0;  // vitesse et accélération de la souris
+  let histCorps = [];        // positions récentes de son corps (pour la traînée d'éclairs)
+  let prochaineTrainee = 0;
+  // 'puce' = elle a disparu, on attend qu'on glisse la puce dans un port USB ; 'reboot' = réinitialisation
+  const occupee = () => etat === 'attrapee' || etat === 'chute' || etat === 'ecrasee' ||
+                        etat === 'puce' || etat === 'reboot';
+
+  // ===== Déplacer la fenêtre en restant appuyé (orbe et fenêtre d'appel) =====
+  // Pendant la balade, ça ne fait rien (à améliorer plus tard).
+  function activerDeplacement(zone, interdit) {
+    zone.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || enAnim) return;
+      if (interdit && interdit(e)) return;
+      aDeplace = false;
+      const x0 = e.screenX, y0 = e.screenY;
+      zone.setPointerCapture(e.pointerId);
+      ipcRenderer.send('drag-start');
+      const bouge = (m) => {
+        if (Math.hypot(m.screenX - x0, m.screenY - y0) > 5) aDeplace = true;
+      };
+      const fin = () => {
+        zone.removeEventListener('pointermove', bouge);
+        zone.removeEventListener('pointerup', fin);
+        zone.removeEventListener('pointercancel', fin);
+        ipcRenderer.send('drag-stop');
+      };
+      zone.addEventListener('pointermove', bouge);
+      zone.addEventListener('pointerup', fin);
+      zone.addEventListener('pointercancel', fin);
+    });
+  }
+  activerDeplacement(orb);
+  // Dans la fenêtre d'appel : on peut la saisir partout, sauf sur la case d'écriture,
+  // les boutons et la barre de défilement du chat
+  activerDeplacement(call, (e) => e.target.closest('input, button') ||
+    (e.target === chat && e.clientX > chat.getBoundingClientRect().left + chat.clientWidth));
+
+  // Le clic passe à travers l'écran, sauf sur Capri, sur la puce, ou quand le menu est ouvert
+  function majClic() {
+    if (enAnim) ipcRenderer.send('clickthrough', !(survolCapri || menuOuvert || tenue || survolPuce || puceTenue));
+  }
+
+  // Place Capri à l'écran (position horizontale, hauteur et sens)
+  function majTransform(flip) {
+    walker.style.transform = 'translate(' + ax + 'px,' + (-ay) + 'px) rotate(' + rot + 'deg) scaleX(' + flip + ')';
+  }
+
+  // ===== Bulle de dialogue =====
+  const bulle = document.getElementById('bulle');
+  const bulleTxt = document.getElementById('bulleTxt');
+  const queue = document.getElementById('queue');
+
+  // Place la bulle au-dessus de la tête de Capri
+  function positionnerBulle() {
+    const bw = bulle.offsetWidth, bh = bulle.offsetHeight;
+    const w = sprite.offsetWidth, h = sprite.offsetHeight * (etat === 'ecrasee' ? 0.35 : 1);
+    const centre = ax + w / 2;
+    const x = borner(centre - 24, 6, Math.max(6, window.innerWidth - bw - 6));
+    const y = Math.max(4, window.innerHeight - ay - h - bh - 14);
+    bulle.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    queue.style.left = borner(centre - x - 7, 8, Math.max(8, bw - 30)) + 'px';
+  }
+
+  function cacherBulle() {
+    bulleId++;
+    bulleActive = false;
+    bulle.getAnimations().forEach((a) => a.cancel()); // enlève l'ancienne transparence
+    bulle.style.display = 'none';
+  }
+
+  // Elle dit une phrase : la bulle apparaît, le texte s'écrit, reste un moment,
+  // puis s'efface lentement. Renvoie true si tout s'est bien passé.
+  // (liste : les phrases possibles, duree : temps affiché, fondu : temps de disparition)
+  async function direPhrase(liste = PHRASES, duree = BULLE_DUREE, fondu = BULLE_FONDU) {
+    const id = ++bulleId;
+    if (liste !== derniereListe) { dernierePhrase = -1; derniereListe = liste; }
+    let n;
+    do { n = Math.floor(Math.random() * liste.length); } while (n === dernierePhrase && liste.length > 1);
+    dernierePhrase = n;
+    const phrase = liste[n];
+
+    bulle.getAnimations().forEach((a) => a.cancel());
+    bulleActive = true;
+    bulleTxt.textContent = '';
+    bulle.style.display = 'block';
+    positionnerBulle();
+    bulle.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120 });
+
+    for (const c of phrase) {
+      if (id !== bulleId) return false;
+      bulleTxt.textContent += c;
+      await wait(38);
+    }
+    await wait(duree);
+    if (id !== bulleId) return false;
+
+    await bulle.animate([{ opacity: 1 }, { opacity: 0 }], { duration: fondu, fill: 'forwards' }).finished;
+    if (id !== bulleId) return false;
+    cacherBulle();
+    return true;
+  }
+
+  // ===== Raccrocher / désanimer =====
+  // Arrête la balade et renvoie la position de Capri (pour placer la fenêtre)
+  function arreterBalade() {
+    session++;
+    cancelAnimationFrame(raf);
+    etat = 'cache';
+    const centre = ax + sprite.offsetWidth / 2;
+    enAnim = false;
+    survolCapri = false;
+    menuOuvert = false;
+    tenue = false; rot = 0; phi = 0; omega = 0;
+    walker.style.transformOrigin = '';
+    walker.style.pointerEvents = '';
+    ay = 0; cibleAy = 0;
+    fenetre = null;
+    ligne = null;
+    cacherBulle();
+    document.body.classList.remove('enAnim');
+    nettoyerPuce(); // retire la puce, le message USB et l'interface de réinitialisation
+    ipcRenderer.send('ligne-finie');
+    fermeeEnAttente = false;
+    anim.style.display = 'none';
+    return centre;
+  }
+
+  function raccrocher() {
+    if (enAnim) {
+      const centre = arreterBalade();
+      ipcRenderer.send('mode', 'orb', centre);
+    } else {
+      ipcRenderer.send('mode', 'orb');
+    }
+    call.style.display = 'none';
+    orb.style.display = 'flex';
+  }
+
+  function desanimer() {
+    const centre = arreterBalade();
+    ipcRenderer.send('mode', 'call', centre);
+    call.style.display = 'flex';
+    input.focus();
+  }
+
+  document.getElementById('hangup').addEventListener('click', raccrocher);
+
+  // ===== Menu cyberpunk (clic droit) =====
+  const menu = document.getElementById('menu');
+  const mAnim = document.getElementById('mAnim');
+  const mDesanim = document.getElementById('mDesanim');
+
+  function ouvrirMenu(x, y) {
+    // Pendant la balade : RACCROCHER + DÉSANIMER. Sinon : RACCROCHER + ANIMER.
+    mAnim.style.display = enAnim ? 'none' : 'block';
+    mDesanim.style.display = enAnim ? 'block' : 'none';
+    menu.style.display = 'block';
+    x = Math.min(x, window.innerWidth - menu.offsetWidth - 4);
+    y = Math.min(y, window.innerHeight - menu.offsetHeight - 4);
+    menu.style.left = Math.max(4, x) + 'px';
+    menu.style.top = Math.max(4, y) + 'px';
+    menuOuvert = true;
+    majClic();
+  }
+  function fermerMenu() {
+    if (menu.style.display !== 'block') return;
+    menu.style.display = 'none';
+    menuOuvert = false;
+    majClic();
+  }
+
+  call.addEventListener('contextmenu', (e) => { e.preventDefault(); ouvrirMenu(e.clientX, e.clientY); });
+  walker.addEventListener('contextmenu', (e) => { e.preventDefault(); ouvrirMenu(e.clientX, e.clientY); });
+  ipcRenderer.on('menu-at', (e, x, y) => ouvrirMenu(x, y));
+  document.addEventListener('mousedown', (e) => { if (!menu.contains(e.target)) fermerMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerMenu(); });
+  window.addEventListener('blur', fermerMenu);
+  document.getElementById('mHang').addEventListener('click', () => { fermerMenu(); raccrocher(); });
+  mAnim.addEventListener('click', () => { fermerMenu(); animer(); });
+  mDesanim.addEventListener('click', () => { fermerMenu(); desanimer(); });
+
+  // ===== Réglages de la balade =====
+  const ECHELLE = 0.30;            // taille de Capri (plus petit = plus petite)
+  const VITESSE = 0.8;              // pixels par image
+  const SENS_MARCHE = 1;           // mets -1 si elle marche en arrière
+  const MARCHE = 7;                // la marche (animée avec les images capri7_1.png, capri7_2.png...)
+  const POSES = [6, 8, 9, 10, 11]; // les images d'arrêt
+  const HAUTEURS = { 6: 582, 7: 577, 8: 484, 9: 565, 10: 571, 11: 557 };
+
+  // ----- Capri assise sur une fenêtre -----
+  // L'image de Capri assise sur les fenêtres (ici capri8.png).
+  // Sa taille est calculée toute seule à partir de l'image (avec ECHELLE).
+  const IMAGE_ASSISE = 'capri8.png';
+  // De temps en temps, elle disparaît et réapparaît ailleurs sur la fenêtre (en ms, min et max)
+  const SAUT_MIN = 8000;
+  const SAUT_MAX = 20000;
+  let prochainSaut = 0;
+
+  // ----- Capri attrapée par la souris (quand on reste appuyé sur elle) -----
+  const IMAGE_ATTRAPEE = 'capri_attrape.png'; // mains jointes, accrochées au curseur
+  const HAUTEUR_ATTRAPEE = 600;   // sa taille quand on la tient (même échelle que HAUTEURS)
+  const RATIO_ATTRAPEE = 0.455;   // largeur / hauteur de l'image
+  const PIVOT_X = 0.41;           // où sont ses mains dans l'image (de 0 à 1) : c'est là que le curseur l'accroche
+  const PIVOT_Y = 0.04;
+  const DELAI_ATTRAPE = 220;      // temps d'appui avant de l'attraper (ms)
+  const GRAVITE = 1800;           // plus grand = elle revient plus vite à la verticale
+  const TRAINEE = 1.15;           // plus grand = elle se penche plus quand tu bouges vite
+  const AMORTI = 1.7;             // plus petit = elle se balance plus longtemps
+  const ANGLE_MAX = 1.5;          // inclinaison maximale (radians, environ 86 degrés)
+
+  // Gerbe à l'impact (quand elle touche le sol)
+  const NB_ECLAIRS_IMPACT = 12;   // éclairs qui partent dans tous les sens
+  const NB_FICHIERS = 22;         // fichiers qui giclent partout
+  const COULEURS_FICHIERS = ['#00ffa3', '#ff2e63', '#27e6ff', '#e8fff6', '#ffe600'];
+  const GRAVITE_CHUTE = 2600;     // vitesse de sa chute quand tu la lâches
+
+  // Écrasement au sol
+  const CREPE = 'scale(1.3, 0.35)';  // sa forme de crêpe (le 2e chiffre = l'épaisseur)
+  const DUREE_CREPE = 1800;       // temps où la phrase reste affichée une fois écrite (ms) : écrasée en tout environ 3,5 s
+  const PHRASES_AIE = [
+    "Ouais, tu m'as fait mal, choom !",
+    "Aïe ! Ça fait mal, choom !",
+    "Ouille... mes implants !",
+    "Tchoum... c'est pas nova, ça.",
+    "J'ai failli flatline, gonk !",
+    "Mes chromes ont pris cher...",
+    "Aïe, ça pique, choom !",
+    "Même un solo aurait eu mal !",
+    "Mon cyberware est en vrac..."
+  ];
+
+  // Traînée pluie de code (couleurs de Capri) : des caractères de code qui s'échappent de Capri et retombent en s'effaçant
+  const TRAINEE_PAUSE = 30;       // temps entre deux apparitions (ms) : plus petit = plus de caractères
+  const TRAINEE_NOMBRE_MIN = 4;   // nombre minimal de caractères à chaque apparition
+  const TRAINEE_NOMBRE_MAX = 6;   // nombre maximal de caractères à chaque apparition
+  const TRAINEE_VITESSE = 300;    // vitesse minimale (pixels par seconde) pour laisser une traînée
+  const TRAINEE_DUREE = 750;      // temps que met un caractère pour disparaître (ms)
+  const TRAINEE_CARACTERES = '01010101ABCDEF<>/#$%';  // les caractères possibles : ajoute-en si tu veux
+  const TRAINEE_PALETTE = [['#fb116e', '#fb116e'], ['#fb116e', '#fb116e'], ['#fb116e', '#fb116e'], ['#01ec54', '#01ec54'], ['#01ec54', '#01ec54'], ['#01ec54', '#01ec54'], ['#ffffff', '#fb116e'], ['#ffffff', '#01ec54']];  // rose, vert, et blanc avec une lueur rose ou verte
+  const BULLE_ATT_MIN = 5000;     // temps entre deux phrases pendant qu'on la tient (ms)
+  const BULLE_ATT_MAX = 9000;
+  const PHRASES_ATTRAPEE = [
+    "Arrête ça, choom !",
+    "Lâche-moi, gonk !",
+    "Hé, je suis pas un cyberdeck !",
+    "Doucement, choom !",
+    "C'est incroyable, Nova !",
+    "Preem ! Encore !",
+    "Plus fort, choom !",
+    "Ça, c'est nova !"
+  ];
+
+  // ----- Bulles de dialogue (elle s'assoit au sol pour les dire) -----
+  const BULLE_MIN = 15000;   // temps entre deux phrases (ms, min et max) : plus grand = plus rare
+  const BULLE_MAX = 35000;
+  const BULLE_DUREE = 6500;  // temps pendant lequel la phrase reste affichée une fois écrite (ms)
+  const BULLE_FONDU = 2500;  // temps que met la phrase pour disparaître en transparence (ms)
+  // Pour ajouter une phrase, ajoute simplement une ligne dans la liste
+  const PHRASES = [
+    "Eh oh, t'es là, choom ?",
+    "Choom, on me parle ?",
+    "Réveille-toi, samouraï.",
+    "Night City ne dort jamais.",
+    "Un petit run ce soir, choom ?",
+    "Ne fais pas le gonk, choom.",
+    "Preem, ce bureau.",
+    "Tu rêves ou tu bosses ?",
+    "Je m'ennuie, choom...",
+    "Plus d'eddies, moins de bugs."
+  ];
+  let prochaineBulle = 0;
+  let bulleActive = false;   // vrai quand la bulle est affichée
+  let bulleId = 0;           // change à chaque bulle (annule les anciennes)
+  let dernierePhrase = -1;
+  let derniereListe = null;
+
+  // ----- Escapades sur les lignes d'une grande fenêtre -----
+  const ESCAPADE_MIN = 6000;  // temps passé au sol entre deux escapades (ms, min et max)
+  const ESCAPADE_MAX = 14000;
+  const LIGNE_MIN = 14000;    // temps total passé sur une ligne (ms, min et max)
+  const LIGNE_MAX = 24000;
+  const MARCHE_LIGNE_MIN = 2000;  // sur la ligne : elle marche un moment...
+  const MARCHE_LIGNE_MAX = 4500;
+  const ASSISE_LIGNE_MIN = 3500;  // ...puis s'assoit un moment (image IMAGE_ASSISE), et ainsi de suite
+  const ASSISE_LIGNE_MAX = 7000;
+  let prochaineEscapade = 0;
+  let escapadeVite = false;   // vrai : la prochaine escapade arrive plus tôt (grande fenêtre qui vient d'arriver)
+  let ligne = null;           // la ligne sur laquelle elle marche : { x1, x2, y }
+  let finLigne = 0;
+  let finSous = 0;            // fin de la phase en cours sur la ligne (marche ou assise)
+  let lignePerdue = false;
+
+  // ----- Animation de marche (stop motion) -----
+  // Ordre des images de la marche (numéros de capri7_X.png). Pour changer le rendu,
+  // modifie simplement cette liste : par exemple [1, 2, 3, 4] ou [1, 2, 3, 4, 5, 6, 7, 8].
+  const IMAGES_MARCHE = [1, 2, 3, 4]; // contact, passage, contact (jambes inversées), passage
+  const DELAI_MARCHE = 300;        // temps entre deux images, en ms (plus petit = elle marche plus vite)
+  let imageMarche = 0;             // position actuelle dans la liste
+  let prochaineImage = 0;          // moment du prochain changement d'image
+  const nomMarche = (i) => 'capri7_' + IMAGES_MARCHE[i] + '.png';
+
+  // Pré-chargement (et décodage) de toutes les images pour éviter les clignotements
+  const precharge = (src) => { const im = new Image(); im.src = src; if (im.decode) im.decode().catch(() => {}); };
+  POSES.forEach((n) => precharge('capri' + n + '.png'));
+  IMAGES_MARCHE.forEach((_, i) => precharge(nomMarche(i)));
+  precharge(IMAGE_ASSISE);
+  precharge(IMAGE_ATTRAPEE);
+
+  // Couleurs des mini-éclairs quand elle change d'animation
+  const PALETTE = ['#ff2e63', '#27e6ff', '#00ffa3', '#ffe600', '#b66bff', '#ff8a1f', '#4d7cff'];
+
+  let pose = MARCHE;
+  const alea = (a, b) => a + Math.random() * (b - a);
+
+  function setPose(n) {
+    pose = n;
+    sprite.src = n === MARCHE ? nomMarche(imageMarche) : 'capri' + n + '.png';
+    sprite.style.height = HAUTEURS[n] * ECHELLE + 'px';
+    sprite.style.width = 'auto';
+  }
+
+  // Met l'image de Capri assise (si le fichier manque, on prend une autre pose)
+  async function setPoseAssise() {
+    pose = 'assise';
+    const im = new Image();
+    im.src = IMAGE_ASSISE;
+    try {
+      await im.decode();
+      sprite.src = IMAGE_ASSISE;
+      sprite.style.height = im.naturalHeight * ECHELLE + 'px';
+    } catch (e) {
+      console.warn('Image introuvable : ' + IMAGE_ASSISE + ' (pose de remplacement utilisée)');
+      sprite.src = 'capri' + POSES[0] + '.png';
+      sprite.style.height = HAUTEURS[POSES[0]] * ECHELLE + 'px';
+    }
+    sprite.style.width = 'auto';
+  }
+
+  // ===== La puce (référence à Cyberpunk) =====
+  // Quand Capri s'écrase au sol, il y a parfois une puce qui jaillit avec les fichiers.
+  // Capri est alors foudroyée et disparaît. Il faut glisser la puce dans un des deux ports USB
+  // en haut à droite de l'écran : elle se présente, s'enfonce dans le port, trois fenêtres de
+  // "hacking" s'ouvrent (réinitialisation, accès root, journal d'erreurs), puis Capri revient.
+  const CHANCE_PUCE = 0.25;        // chance qu'une puce tombe quand elle s'écrase (0.25 = 1 fois sur 4, 0.5 = 1 fois sur 2)
+  const PUCE_LARGEUR = 76;         // largeur de la puce (une carte) à l'écran, en pixels : garde-la sous 80 pour qu'elle entre dans un port
+  const PUCE_HAUTEUR = 56;         // hauteur de la puce
+  const PUCE_IMAGES = ['puce_gauche.png', 'puce_droite.png']; // les deux côtés de la puce
+  const ETAPES_TOUR = 12;          // nombre d'images pour un tour complet de la puce
+  const DELAI_TOUR_PUCE = 70;      // temps entre deux images de rotation (ms) : plus petit = elle tourne plus vite
+  const GRAVITE_PUCE = 1600;       // vitesse de chute de la puce
+  const PORTEE_PORT = 70;          // à quelle distance du port (pixels) la puce est "dans le trou"
+  const ROT_PUCE = 0;              // inclinaison de la puce quand elle se présente devant un port
+  const DUREE_ENTREE = 1200;       // durée de l'insertion dans le port (ms)
+  const PHRASES_REBOOT = ["C'est bon, je suis là !"];
+  // Les messages sous le titre pendant la réinitialisation : [à partir de quel %, texte]
+  const ETAPES_REBOOT = [
+    [0, 'CAPRI // PUCE DÉTECTÉE'],
+    [25, 'CAPRI // RESTAURATION DES DONNÉES'],
+    [60, 'CAPRI // RÉÉCRITURE DU NOYAU'],
+    [90, 'CAPRI // DERNIÈRES VÉRIFICATIONS'],
+    [100, 'CAPRI // RÉINITIALISÉE']
+  ];
+
+  const puceEl = document.getElementById('puce');
+  const puceImg = document.getElementById('puceImg');
+  const puceTag = document.getElementById('puceTag');
+  const puceTagS = document.querySelector('#puceTag .tag-s');
+  const puceCible = document.getElementById('puceCible');
+  const puceAura = document.getElementById('puceAura');
+  const flashUsb = document.getElementById('flashUsb');
+  const usb = document.getElementById('usb');
+  const usbHint = document.getElementById('usbHint');
+  const ports = [document.getElementById('port1'), document.getElementById('port2')];
+  const rebootEl = document.getElementById('reboot');
+  const rbScene = document.getElementById('rbScene');
+  const rbMain = document.getElementById('rbMain');
+  const rbRoot = document.getElementById('rbRoot');
+  const rbErr = document.getElementById('rbErr');
+  const rebootCadre = document.getElementById('rebootCadre');
+  const rootCadre = document.getElementById('rootCadre');
+  const errCadre = document.getElementById('errCadre');
+  const rebootTitre = document.getElementById('rebootTitre');
+  const rebootMeta = document.getElementById('rebootMeta');
+  const rebootFill = document.getElementById('rebootFill');
+  const rebootPct = document.getElementById('rebootPct');
+  const rebootSous = document.getElementById('rebootSous');
+  const rebootLog = document.getElementById('rebootLog');
+  const rebootStats = document.getElementById('rebootStats');
+  const rootTitre = document.getElementById('rootTitre');
+  const rootSous = document.getElementById('rootSous');
+  const rootListe = document.getElementById('rootListe');
+  const errTitre = document.getElementById('errTitre');
+  const errBilan = document.getElementById('errBilan');
+  const errLog = document.getElementById('errLog');
+  const jauges = [1, 2, 3, 4].map((i) => ({ f: document.getElementById('j' + i), v: document.getElementById('v' + i) }));
+  PUCE_IMAGES.forEach(precharge);
+
+  let puceActive = false;          // vrai quand la puce est à l'écran
+  let puceMode = 'vol';            // 'vol' (en l'air), 'sol' (posée), 'tenue' (dans ta main), 'entre' (rentre dans le port)
+  let puceX = 0, puceY = 0;        // centre de la puce
+  let puceVX = 0, puceVY = 0;      // sa vitesse
+  let puceK = 1;                   // sa taille
+  let puceRot = 0;                 // son inclinaison (degrés)
+  let puceAng = 0;                 // son angle de rotation sur elle-même (degrés)
+  let puceEtape = 0, puceTourT = 0, puceDernier = 0, rafPuce = null;
+  let puceTenue = false, survolPuce = false, puceEntre = null, puceSession = 0;
+  let portSurvole = null;          // le port sous le curseur quand on tient la puce
+  let prochainArc = 0;             // prochain petit arc électrique entre le port et la puce
+  const lisse = (t) => t * t * (3 - 2 * t);
+
+  // Quand tu tiens la puce et que tu la bouges, elle sème de petits fragments qui restent à leur place
+  const FRAG_ESPACE = 16;          // distance (pixels) entre deux semis de fragments : plus petit = traînée plus dense
+  const FRAG_MIN = 1;              // nombre de fragments à chaque endroit (min et max)
+  const FRAG_MAX = 3;
+  const FRAG_DUREE = 2200;         // temps pendant lequel un fragment reste là avant de s'effacer (ms)
+  const FRAG_COULEURS = ['#27e6ff', '#27e6ff', '#00ffa3', '#ff2e63', '#ffffff'];
+  const FRAG_FORMES = [
+    'polygon(0 0, 100% 20%, 60% 100%)',
+    'polygon(20% 0, 100% 0, 80% 100%, 0 70%)',
+    'polygon(0 40%, 70% 0, 100% 60%, 30% 100%)'
+  ];
+  let dernierFragX = 0, dernierFragY = 0;
+
+  // Un fragment : il apparaît d'un coup, ne bouge plus, brille, puis s'efface lentement
+  function fragmentPuce(x, y) {
+    const w = alea(4, 11), h = alea(4, 11);
+    const c = FRAG_COULEURS[Math.floor(Math.random() * FRAG_COULEURS.length)];
+    const el = document.createElement('div');
+    el.style.cssText = 'position:absolute;pointer-events:none;z-index:57;' +
+      'left:' + (x - w / 2).toFixed(1) + 'px;top:' + (y - h / 2).toFixed(1) + 'px;' +
+      'width:' + w.toFixed(1) + 'px;height:' + h.toFixed(1) + 'px;background:' + c + ';' +
+      'clip-path:' + FRAG_FORMES[Math.floor(Math.random() * FRAG_FORMES.length)] + ';' +
+      'filter:drop-shadow(0 0 3px ' + c + ');';
+    anim.appendChild(el);
+    const rot = alea(0, 360).toFixed(0);
+    el.animate([
+      { opacity: 0, transform: 'rotate(' + rot + 'deg) scale(0.2)' },
+      { opacity: 1, transform: 'rotate(' + rot + 'deg) scale(1.3)', offset: 0.06 },
+      { opacity: 1, transform: 'rotate(' + rot + 'deg) scale(1)', offset: 0.12 },
+      { opacity: 0.85, transform: 'rotate(' + rot + 'deg) scale(1)', offset: 0.6 },
+      { opacity: 0, transform: 'rotate(' + rot + 'deg) scale(0.8)' }
+    ], { duration: FRAG_DUREE * alea(0.8, 1.3), easing: 'linear' }).onfinish = () => el.remove();
+  }
+
+  // Appelée à chaque image tant qu'on tient la puce : sème des fragments le long du chemin
+  function fragmentsPuce() {
+    const d = Math.hypot(puceX - dernierFragX, puceY - dernierFragY);
+    if (d < FRAG_ESPACE) return;
+    const pas = Math.min(8, Math.floor(d / FRAG_ESPACE));     // si la souris va vite, on comble le trou
+    for (let i = 1; i <= pas; i++) {
+      const t = i / pas;
+      const x = dernierFragX + (puceX - dernierFragX) * t;
+      const y = dernierFragY + (puceY - dernierFragY) * t;
+      const n = FRAG_MIN + Math.floor(Math.random() * (FRAG_MAX - FRAG_MIN + 1));
+      for (let k = 0; k < n; k++) fragmentPuce(x + alea(-20, 20), y + alea(-16, 16));
+    }
+    dernierFragX = puceX; dernierFragY = puceY;
+  }
+
+  // Place la puce à l'écran (avec son viseur, son étiquette et sa lueur au sol)
+  function placerPuce() {
+    puceEl.style.transform = 'translate(' + (puceX - PUCE_LARGEUR / 2).toFixed(1) + 'px,' +
+      (puceY - PUCE_HAUTEUR / 2).toFixed(1) + 'px) rotate(' + puceRot.toFixed(1) + 'deg) perspective(260px) rotateY(' +
+      puceAng.toFixed(1) + 'deg) scale(' + puceK.toFixed(3) + ')';
+    const visible = puceMode === 'sol' || puceMode === 'tenue';
+    puceCible.style.display = visible ? 'block' : 'none';
+    puceTag.style.display = visible ? 'block' : 'none';
+    puceAura.style.display = puceMode === 'sol' ? 'block' : 'none';
+    if (visible) {
+      // CORRECTION : on place le viseur avec "translate" (et pas "transform"), sinon la pulsation
+      // (scale) agrandit aussi la position et le viseur part vers le coin de l'écran.
+      puceCible.style.translate = (puceX - (PUCE_LARGEUR + 32) / 2).toFixed(1) + 'px ' +
+        (puceY - (PUCE_HAUTEUR + 30) / 2).toFixed(1) + 'px';
+      puceCible.classList.toggle('vert', !!portSurvole);
+      const flotte = Math.sin(performance.now() / 280) * 3;      // l'étiquette flotte doucement
+      puceTag.style.transform = 'translate(' + puceX.toFixed(1) + 'px,' +
+        (puceY - (PUCE_HAUTEUR + 30) / 2 - 4 + flotte).toFixed(1) + 'px) translate(-50%, -100%)';
+      const txt = portSurvole ? '● PORT DÉTECTÉ : LÂCHE !' : '▲ INSÈRE-MOI DANS UN PORT USB';
+      if (puceTagS.textContent !== txt) puceTagS.textContent = txt;
+    }
+    if (puceMode === 'sol') puceAura.style.transform = 'translate(' + (puceX - 55).toFixed(1) + 'px,' +
+      (window.innerHeight - 14) + 'px)';
+  }
+
+  // Rotation image par image : côté gauche, elle tourne en perspective, puis côté droit...
+  function imagePuce() {
+    const t = puceEtape * (360 / ETAPES_TOUR) + 180 / ETAPES_TOUR; // jamais exactement de profil
+    const face = ((t + 90) % 360) < 180 ? 0 : 1;
+    puceAng = ((t + 90) % 180) - 90;
+    const src = PUCE_IMAGES[face];
+    if (!puceImg.src.endsWith(src)) puceImg.src = src;
+  }
+
+  // Les ondes de choc qui partent du port quand la puce touche le fond
+  function ondeChoc(x, y) {
+    [['#27e6ff', 0], ['#00ffa3', 130]].forEach(([c, delai]) => {
+      const o = document.createElement('div');
+      o.style.cssText = 'position:fixed;pointer-events:none;z-index:97;border-radius:50%;' +
+        'width:20px;height:20px;border:2px solid ' + c + ';box-shadow:0 0 10px ' + c + ';' +
+        'left:' + (x - 10) + 'px;top:' + (y - 10) + 'px;opacity:0';
+      document.body.appendChild(o);
+      o.animate(
+        [{ opacity: 0.95, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(11)' }],
+        { duration: 560, delay: delai, easing: 'ease-out', fill: 'both' }
+      ).onfinish = () => o.remove();
+    });
+  }
+
+  function boucleChutePuce(now) {
+    const dt = Math.min(0.033, Math.max(0.001, (now - puceDernier) / 1000));
+    puceDernier = now;
+    let rotCible = 0;
+    if (puceMode === 'vol') {
+      puceVY += GRAVITE_PUCE * dt;
+      puceX += puceVX * dt;
+      puceY += puceVY * dt;
+      if (puceX < PUCE_LARGEUR / 2) { puceX = PUCE_LARGEUR / 2; puceVX = Math.abs(puceVX) * 0.5; }
+      if (puceX > window.innerWidth - PUCE_LARGEUR / 2) { puceX = window.innerWidth - PUCE_LARGEUR / 2; puceVX = -Math.abs(puceVX) * 0.5; }
+      const sol = window.innerHeight - PUCE_HAUTEUR / 2 - 2;
+      if (puceY >= sol) {                         // elle touche le sol : elle rebondit puis se pose
+        puceY = sol;
+        if (Math.abs(puceVY) > 280) { puceVY *= -0.4; puceVX *= 0.6; }
+        else { puceVY = 0; puceVX = 0; puceMode = 'sol'; }
+      }
+    } else if (puceMode === 'tenue' && portSurvole) {
+      rotCible = ROT_PUCE;
+      // Près d'un port : de petits arcs électriques relient le port à la puce
+      if (now > prochainArc) {
+        prochainArc = now + 130;
+        const r = portSurvole.getBoundingClientRect();
+        eclair(r.left + r.width / 2 + alea(-16, 16), r.bottom, puceX + alea(-20, 20), puceY - PUCE_HAUTEUR / 2, {
+          couleur: '#27e6ff', halo: '#27e6ff', epaisseur: 1.3, duree: 170, descente: 30,
+          rugosite: 0.5, pas: 4, branches: 0, echelleBr: 0
+        });
+      }
+    } else if (puceMode === 'entre' && puceEntre) {
+      const E = puceEntre;
+      const p = Math.min(1, (now - E.t0) / DUREE_ENTREE);
+      if (p < 0.4) {                               // 1. l'aimant l'attire sous le port
+        const e = lisse(p / 0.4);
+        puceX = E.x0 + (E.xa - E.x0) * e;
+        puceY = E.y0 + (E.ya - E.y0) * e;
+        puceRot = E.rot0 + (ROT_PUCE - E.rot0) * e;
+      } else if (p < 0.62) {                       // 2. elle vibre, juste sous l'ouverture
+        puceX = E.xa + (Math.random() - 0.5) * 3;
+        puceY = E.ya + (Math.random() - 0.5) * 3;
+        puceRot = ROT_PUCE;
+      } else {                                     // 3. elle s'enfonce dans le port (elle passe derrière lui)
+        const q = (p - 0.62) / 0.38;
+        puceX = E.xa;
+        puceY = E.ya + (E.y1 - E.ya) * q * q;
+        puceRot = ROT_PUCE;
+        if (!E.contact) {                          // contact : étincelles, ondes de choc, le port flashe
+          E.contact = true;
+          E.port.classList.add('connecte', 'flash');
+          setTimeout(() => E.port.classList.remove('flash'), 220);
+          ondeChoc(E.xa, E.bas);
+          particules(E.xa, E.bas, {
+            couleurs: ['#00ffa3', '#ffffff', '#27e6ff'], n: 14, vmin: 100, vmax: 340,
+            tailleMin: 2, tailleMax: 4, angleMin: 0.15, angleMax: Math.PI - 0.15, duree: 400
+          });
+        }
+      }
+    }
+    if (puceMode !== 'entre') puceRot += (rotCible - puceRot) * Math.min(1, dt * 10);
+
+    // Quand elle se présente devant un port, la rotation s'arrête, côté gauche de face
+    const verrou = puceMode === 'entre' || (puceMode === 'tenue' && portSurvole);
+    if (verrou) {
+      if (!puceImg.src.endsWith(PUCE_IMAGES[0])) puceImg.src = PUCE_IMAGES[0];
+      puceAng += (0 - puceAng) * Math.min(1, dt * 14);
+    } else if (now > puceTourT) {
+      puceEtape = (puceEtape + 1) % ETAPES_TOUR;
+      puceTourT = now + DELAI_TOUR_PUCE;
+      imagePuce();
+    }
+    if (puceMode === 'tenue') fragmentsPuce();
+    placerPuce();
+    rafPuce = requestAnimationFrame(boucleChutePuce);
+  }
+
+  // La puce jaillit du point d'impact, part très haut en l'air et retombe un peu plus loin
+  function lancerPuce(x, y) {
+    cancelAnimationFrame(rafPuce);
+    puceActive = true;
+    puceEl.style.display = 'block';
+    puceEl.style.pointerEvents = 'none';   // on ne peut pas l'attraper tant que Capri est encore là
+    puceEl.style.width = PUCE_LARGEUR + 'px';
+    puceEl.style.height = PUCE_HAUTEUR + 'px';
+    puceCible.style.width = (PUCE_LARGEUR + 32) + 'px';
+    puceCible.style.height = (PUCE_HAUTEUR + 30) + 'px';
+    puceEl.classList.remove('tenue');
+    puceEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250 }); // elle ne surgit pas d'un coup
+    puceX = borner(x, PUCE_LARGEUR / 2, window.innerWidth - PUCE_LARGEUR / 2);
+    puceY = y - 30;
+    // Elle part très haut en l'air (parfois hors de l'écran), du côté où il y a le plus de place,
+    // et retombe un peu plus loin : change 200/380 pour la faire tomber plus près ou plus loin
+    const dir = x < window.innerWidth / 2 ? 1 : -1;
+    puceVX = dir * alea(200, 380);
+    puceVY = -alea(1300, 1700);
+    puceMode = 'vol'; puceK = 1; puceRot = 0; puceAng = 0; puceEtape = 0; puceTourT = 0; portSurvole = null;
+    puceDernier = performance.now();
+    imagePuce();
+    placerPuce();
+    rafPuce = requestAnimationFrame(boucleChutePuce);
+  }
+
+  // Affiche ou cache le message "INSÈRE LA PUCE" ; remet les ports à zéro
+  function afficherUSB(oui) {
+    usbHint.style.display = oui ? 'block' : 'none';
+    if (oui) {
+      usbHint.textContent = 'INSÈRE LA PUCE';
+      usbHint.style.color = ''; usbHint.style.textShadow = ''; usbHint.style.animation = '';
+    }
+    ports.forEach((p) => p.classList.remove('survol', 'connecte', 'flash'));
+  }
+
+  // Le port le plus proche du curseur (ou null si on est trop loin)
+  function portSous(x, y) {
+    let meilleur = null, dmin = PORTEE_PORT;
+    ports.forEach((p) => {
+      const r = p.getBoundingClientRect();
+      const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+      if (d < dmin) { dmin = d; meilleur = p; }
+    });
+    return meilleur;
+  }
+  function surlignerPort(p) { ports.forEach((q) => q.classList.toggle('survol', q === p)); }
+
+  // ===== Les effets de la connexion de la puce =====
+
+  // Un texte qui se "décode" : des caractères au hasard se transforment peu à peu en vrai texte
+  function decoder(el, texte, duree) {
+    const CH = '01ABCDEF#<>/$%';
+    const t0 = performance.now();
+    return new Promise((res) => {
+      const iv = setInterval(() => {
+        const p = Math.min(1, (performance.now() - t0) / duree);
+        const n = Math.floor(p * texte.length);
+        let r = texte.slice(0, n);
+        for (let i = n; i < texte.length; i++) r += texte[i] === ' ' ? ' ' : CH[Math.floor(Math.random() * CH.length)];
+        el.textContent = r;
+        if (p >= 1) { clearInterval(iv); el.textContent = texte; res(); }
+      }, 40);
+    });
+  }
+
+  // Tout l'écran "bugue" un instant : des bandes de couleur sautent de gauche à droite
+  function glitchEcran(duree) {
+    const g = document.createElement('div');
+    g.style.cssText = 'position:fixed;inset:0;z-index:95;pointer-events:none;overflow:hidden';
+    document.body.appendChild(g);
+    const couleurs = ['#27e6ff', '#ff2e63', '#00ffa3', '#ffffff'];
+    for (let i = 0; i < 12; i++) {
+      const b = document.createElement('div');
+      b.style.cssText = 'position:absolute;left:0;right:0;top:' + alea(0, 100).toFixed(1) + '%;height:' +
+        alea(2, 38).toFixed(0) + 'px;background:' + couleurs[Math.floor(Math.random() * couleurs.length)] +
+        ';mix-blend-mode:screen;opacity:0';
+      g.appendChild(b);
+      b.animate([
+        { opacity: 0, transform: 'translateX(0px)' },
+        { opacity: alea(0.15, 0.4), transform: 'translateX(' + alea(-70, 70).toFixed(0) + 'px)', offset: 0.3 },
+        { opacity: 0, transform: 'translateX(' + alea(-70, 70).toFixed(0) + 'px)' }
+      ], { duration: alea(60, 170), delay: alea(0, duree * 0.7), easing: 'steps(3)', fill: 'both' });
+    }
+    setTimeout(() => g.remove(), duree + 400);
+  }
+
+  // Des ondes à plat qui partent du sol, là où Capri a disparu
+  function ondesSol(x, y) {
+    [['#27e6ff', 0], ['#00ffa3', 150], ['#ffffff', 300]].forEach(([c, delai]) => {
+      const o = document.createElement('div');
+      o.style.cssText = 'position:fixed;pointer-events:none;z-index:97;border-radius:50%;opacity:0;' +
+        'border:2px solid ' + c + ';box-shadow:0 0 10px ' + c + ';box-sizing:border-box;' +
+        'width:40px;height:12px;left:' + (x - 20) + 'px;top:' + (y - 12) + 'px';
+      document.body.appendChild(o);
+      o.animate([
+        { opacity: 0.9, width: '40px', height: '12px', left: (x - 20) + 'px', top: (y - 12) + 'px' },
+        { opacity: 0, width: '640px', height: '110px', left: (x - 320) + 'px', top: (y - 60) + 'px' }
+      ], { duration: 750, delay: delai, easing: 'ease-out', fill: 'both' }).onfinish = () => o.remove();
+    });
+  }
+
+  // Des chiffres et des lettres de code qui coulent du port jusqu'à Capri, comme un flux de données
+  function faisceauDonnees(x1, y1, x2, y2) {
+    const couleurs = ['#27e6ff', '#27e6ff', '#00ffa3', '#ffffff'];
+    for (let i = 0; i < 46; i++) {
+      const c = couleurs[Math.floor(Math.random() * couleurs.length)];
+      const el = document.createElement('div');
+      el.textContent = TRAINEE_CARACTERES[Math.floor(Math.random() * TRAINEE_CARACTERES.length)];
+      el.style.cssText = 'position:fixed;pointer-events:none;z-index:97;left:0;top:0;opacity:0;' +
+        'font-family:Consolas,"Courier New",monospace;font-weight:bold;font-size:' + alea(10, 17).toFixed(0) + 'px;' +
+        'color:' + c + ';text-shadow:0 0 6px ' + c + ';';
+      document.body.appendChild(el);
+      const dx = alea(-28, 28);
+      el.animate([
+        { opacity: 0, transform: 'translate(' + (x1 + dx).toFixed(0) + 'px,' + y1.toFixed(0) + 'px)' },
+        { opacity: 1, offset: 0.15 },
+        { opacity: 1, offset: 0.8 },
+        { opacity: 0, transform: 'translate(' + (x2 + dx * 0.3).toFixed(0) + 'px,' + (y2 - 10).toFixed(0) + 'px)' }
+      ], { duration: alea(500, 800), delay: alea(0, 550), easing: 'ease-in', fill: 'both' }).onfinish = () => el.remove();
+    }
+  }
+
+  // Une colonne de lumière bleue à l'endroit où Capri a disparu : elle reste pendant la réinitialisation
+  let pilierEl = null;
+  function poserPilier(x) {
+    retirerPilier();
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;pointer-events:none;z-index:56;bottom:0;left:' + (x - 34) + 'px;' +
+      'width:68px;height:320px;clip-path:polygon(20% 0, 80% 0, 100% 100%, 0 100%);' +
+      'background:linear-gradient(to top, rgba(39,230,255,0.65), rgba(39,230,255,0.18) 55%, transparent);' +
+      'filter:drop-shadow(0 0 10px #27e6ff);';
+    document.body.appendChild(el);
+    el.animate([{ opacity: 0.95 }, { opacity: 0.35 }, { opacity: 0.95 }], { duration: 900, iterations: Infinity });
+    pilierEl = el;
+  }
+  function retirerPilier() { if (pilierEl) { pilierEl.remove(); pilierEl = null; } }
+
+  // Le bandeau "PUCE CONNECTÉE" sous les ports : le titre se décode, des lignes s'écrivent, une barre se remplit
+  const LIGNES_CONNEXION = ['> SIGNATURE : VALIDE', '> LIEN NEURAL : ÉTABLI', '> CAPRI : RESTAURATION'];
+  let bandeauEl = null;
+  function bandeauConnexion(r, s) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;z-index:97;pointer-events:none;right:16px;top:' + Math.round(r.bottom + 40) + 'px;';
+    el.innerHTML = '<div class="tag-cadre"><div class="tag-in" style="padding:9px 20px 10px 12px;min-width:250px">' +
+      '<div class="tag-t"><span class="bd-t"></span></div>' +
+      '<div class="bd-l" style="margin-top:7px;font-size:10px;letter-spacing:2px;line-height:1.8;color:var(--cyan);min-height:54px"></div>' +
+      '<div class="jb" style="margin-top:8px"><div class="jf bd-f"></div></div></div></div>';
+    document.body.appendChild(el);
+    ouvrirFenetre(el);
+    const titre = el.querySelector('.bd-t'), liste = el.querySelector('.bd-l'), barre = el.querySelector('.bd-f');
+    barre.animate([{ width: '0%' }, { width: '100%' }], { duration: 1400, easing: 'steps(14)', fill: 'forwards' });
+    (async () => {
+      await decoder(titre, 'PUCE CONNECTÉE', 450);
+      for (const txt of LIGNES_CONNEXION) {
+        if (s !== session) return;
+        const l = document.createElement('div');
+        liste.appendChild(l);
+        await decoder(l, txt, 380);
+      }
+    })();
+    return el;
+  }
+  async function fermerBandeau() {
+    const el = bandeauEl;
+    bandeauEl = null;
+    if (!el) return;
+    await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' }).finished;
+    el.remove();
+  }
+
+  // Retire tout ce qui concerne la puce
+  function nettoyerPuce() {
+    retirerPilier();
+    if (bandeauEl) { bandeauEl.remove(); bandeauEl = null; }
+    cancelAnimationFrame(rafPuce);
+    puceActive = false; puceMode = 'vol'; puceTenue = false; survolPuce = false; puceEntre = null;
+    portSurvole = null; puceRot = 0; puceAng = 0;
+    puceEl.style.display = 'none';
+    puceEl.style.pointerEvents = '';
+    puceEl.classList.remove('tenue');
+    puceTag.style.display = 'none';
+    puceCible.style.display = 'none';
+    puceAura.style.display = 'none';
+    rebootEl.style.display = 'none';
+    afficherUSB(false);
+  }
+
+  // La foudre tombe sur Capri écrasée : elle disparaît, et on peut attraper la puce
+  async function sequencePuce(s) {
+    cancelAnimationFrame(raf);
+    etat = 'puce';
+    survolCapri = false;
+    walker.style.pointerEvents = 'none';   // Capri est partie : elle ne doit plus réagir à la souris
+    majClic();
+
+    const x = ax + sprite.offsetWidth / 2, bas = window.innerHeight - 2;
+    eclair(x + alea(-90, 90), -10, x, bas, {
+      couleur: '#dfeaff', halo: 'rgba(190,215,255,0.95)', epaisseur: 3.5,
+      duree: 750, descente: 85, rugosite: 0.38, pas: 7, branches: 0.05, echelleBr: 1
+    });
+    await wait(85);
+    if (s !== session) return;
+    impact(x, bas);
+    walker.animate([{ filter: 'brightness(4)' }, { filter: 'none' }], { duration: 200 });
+    await wait(110);
+    if (s !== session) return;
+    walker.style.opacity = 0;
+    await wait(300);
+    if (s !== session) return;
+
+    // Maintenant on peut attraper la puce
+    puceSession = s;
+    puceEl.style.pointerEvents = '';
+    afficherUSB(true);
+  }
+
+  // On lâche la puce sur un port : l'aimant l'attire, elle vibre, puis s'enfonce dans le port.
+  // Au contact : ondes de choc, flash, et un éclair électrique descend du port jusqu'à l'endroit où Capri a disparu.
+  async function inserer(port) {
+    const s = puceSession;
+    puceMode = 'entre';
+    portSurvole = null;
+    surlignerPort(port);
+    const r = port.getBoundingClientRect();
+    puceEntre = {
+      x0: puceX, y0: puceY, rot0: puceRot,
+      xa: r.left + r.width / 2, ya: r.bottom + PUCE_HAUTEUR / 2 + 14,   // où elle se place avant d'entrer
+      y1: r.bottom - PUCE_HAUTEUR / 2 - 4,                               // où elle finit (cachée derrière le port)
+      bas: r.bottom, port: port, t0: performance.now(), contact: false
+    };
+    puceEl.style.pointerEvents = 'none';
+    await wait(DUREE_ENTREE + 80);
+    if (s !== session) return;
+
+    // Elle est entrée : le port reste allumé en vert
+    cancelAnimationFrame(rafPuce);
+    puceActive = false;
+    puceEl.style.display = 'none';
+    puceTag.style.display = 'none';
+    puceCible.style.display = 'none';
+    puceAura.style.display = 'none';
+    port.classList.add('connecte');
+    particules(puceEntre.xa, r.top + r.height / 2, {
+      couleurs: ['#00ffa3', '#ffffff', '#27e6ff'], n: 22, vmin: 120, vmax: 420,
+      tailleMin: 2, tailleMax: 5, angleMin: -Math.PI, angleMax: Math.PI, duree: 500
+    });
+    usbHint.textContent = 'PUCE CONNECTÉE';
+    usbHint.style.color = 'var(--vert)';
+    usbHint.style.textShadow = '0 0 6px rgba(0, 255, 163, 0.7)';
+    usbHint.style.animation = 'none';
+    survolPuce = false;
+    majClic();
+
+    // === La grande scène de connexion ===
+    // L'écran bugue, un bandeau s'écrit sous les ports, un gros éclair bleu (et deux fins) descend du port
+    // jusqu'à Capri pendant qu'un flux de code coule le long du chemin, puis des ondes et une colonne de lumière
+    // apparaissent là où elle a disparu.
+    const px = puceEntre.xa, py = r.bottom;
+    const cx = ax + sprite.offsetWidth / 2, bas = window.innerHeight - 2;
+    glitchEcran(700);
+    flashUsb.animate([{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 0 }], { duration: 450 });
+    bandeauEl = bandeauConnexion(r, s);
+    eclair(px, py, cx, bas, {
+      couleur: '#27e6ff', halo: '#27e6ff', coeur: '#ffffff', epaisseur: 4.2,
+      duree: 900, descente: 170, rugosite: 0.42, pas: 7, branches: 0.09, echelleBr: 1
+    });
+    [90, 180].forEach((d) => setTimeout(() => {
+      if (s !== session) return;
+      eclair(px + alea(-24, 24), py, cx + alea(-50, 50), bas, {
+        couleur: '#00ffa3', halo: '#00ffa3', coeur: '#ffffff', epaisseur: 1.8,
+        duree: 600, descente: 120, rugosite: 0.5, pas: 6, branches: 0.05, echelleBr: 0.6
+      });
+    }, d));
+    faisceauDonnees(px, py, cx, bas);
+    await wait(170);
+    if (s !== session) return;
+    impact(cx, bas, true);
+    ondesSol(cx, bas);
+    poserPilier(cx);
+    await wait(1500);                 // le bandeau finit de s'écrire
+    if (s !== session) return;
+    fermerBandeau();
+    await wait(350);
+    if (s !== session) return;
+    lancerReboot(s);
+  }
+
+  // Les lignes de "hacking" qui défilent dans la fenêtre RÉINITIALISATION (ajoutes-en si tu veux)
+  const LOGS_HACK = [
+    '> sudo capri --reinit --force',
+    '> connexion au port USB... signature de la puce valide',
+    '> contournement du pare-feu NETWATCH',
+    '> escalade de privilèges : accès ROOT obtenu',
+    '> déchiffrement AES-256 des secteurs 0x00 à 0xFF',
+    '> montage du volume /dev/capri0',
+    '> injection du noyau dans la mémoire vive',
+    '> restauration de la personnalité de Capri',
+    '> réécriture du registre des implants',
+    "> vérification de l'intégrité des données",
+    '> synchronisation des fichiers corrompus',
+    "> purge des fragments d'erreur",
+    "> chargement des routines d'animation",
+    "> calibrage des capteurs d'équilibre",
+    '> test des réflexes... capri.exe prêt'
+  ];
+  // La fenêtre ACCÈS ROOT : [nom de la tâche, % global où elle démarre, vitesse]
+  const TACHES_ROOT = [
+    ['CONTOURNEMENT PARE-FEU', 0, 1.0],
+    ['ESCALADE DE PRIVILÈGES', 5, 1.15],
+    ['DÉCHIFFREMENT DES SECTEURS', 12, 0.95],
+    ['MONTAGE /DEV/CAPRI0', 20, 1.3],
+    ['INJECTION DU NOYAU', 28, 0.9],
+    ['SYNCHRO DES IMPLANTS', 38, 1.1],
+    ['PURGE DES ERREURS', 48, 1.0],
+    ['SIGNATURE NUMÉRIQUE', 58, 1.2]
+  ];
+  // La fenêtre JOURNAL D'ERREURS : les erreurs possibles
+  const ERREURS = [
+    'SECTEUR 0x3F2A CORROMPU',
+    'CHECKSUM INVALIDE : capri.cfg',
+    'IMPLANT #07 NE RÉPOND PAS',
+    'FUITE MÉMOIRE DÉTECTÉE',
+    'TIMEOUT DU NEURO-LINK',
+    'SIGNATURE NON RECONNUE',
+    'REGISTRE ENDOMMAGÉ',
+    "ROUTINE D'ÉQUILIBRE INSTABLE",
+    'NETWATCH : ALERTE INTRUSION',
+    'FRAGMENT ORPHELIN 0x9B1C',
+    'PILE DE LA PERSONNALITÉ SATURÉE',
+    'VERSION DU NOYAU INCOMPATIBLE'
+  ];
+  let indexLog = 0, errTotal = 0, errFixed = 0, errCrit = 0, rebootT0 = 0;
+
+  // La fenêtre ACCÈS ROOT finit avant les autres : elle s'ouvre à OUVERTURE_ROOT % de la
+  // progression, elle a fini à FIN_ROOT %, puis elle se ferme pendant que les autres continuent.
+  const OUVERTURE_ROOT = 28;   // % où la fenêtre ACCÈS ROOT s'ouvre
+  const FIN_ROOT = 70;         // % où elle a fini (et se ferme) : change ce chiffre pour finir plus tôt ou plus tard
+  let rootFermee = false;      // vrai quand ACCÈS ROOT est déjà fermée
+
+  // La fenêtre ACCÈS ROOT a fini : elle passe au vert, reste un instant, puis se ferme
+  async function finirRoot(s) {
+    rootTitre.textContent = 'ACCÈS ROOT ACCORDÉ';
+    rootSous.textContent = 'capri@night-city:~#  PRIVILÈGES MAXIMAUX';
+    rootCadre.style.animation = 'none';
+    rootCadre.style.background = 'var(--vert)';
+    await wait(1000);
+    if (s !== session) return;
+    await fermerFenetre(rbRoot);
+    rootFermee = true;
+  }
+
+  const hex = (n) => { let s = ''; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 16).toString(16).toUpperCase(); return s; };
+
+  // Fenêtre RÉINITIALISATION : une ligne de plus dans le terminal
+  function ajouterLog() {
+    let txt, tag = 'OK', cls = 'ok';
+    const r = Math.random();
+    if (r < 0.45 && indexLog < LOGS_HACK.length) txt = LOGS_HACK[indexLog++];
+    else {
+      txt = '0x' + hex(8) + '  ' + hex(4) + ' ' + hex(4) + ' ' + hex(4);
+      if (r > 0.93) { tag = 'RÉPARÉ'; cls = 'bad'; }
+      else if (r > 0.85) { tag = 'AVERT.'; cls = 'warn'; }
+    }
+    const l = document.createElement('div');
+    l.className = 'lg';
+    l.innerHTML = '<span class="lt"></span><span class="' + cls + '">[' + tag + ']</span>';
+    l.firstChild.textContent = txt;
+    rebootLog.appendChild(l);
+    while (rebootLog.children.length > 14) rebootLog.removeChild(rebootLog.firstChild);
+    rebootStats.textContent = 'PORT USB  //  DÉBIT ' + Math.floor(alea(300, 900)) + ' MO/S  //  TEMP ' +
+      Math.floor(alea(38, 62)) + '°C  //  SECTEUR 0x' + hex(4);
+  }
+
+  // Les 4 jauges de la fenêtre RÉINITIALISATION : [vitesse, retard] par rapport à la progression
+  const COEFS_JAUGES = [[1, 0], [1.15, 0], [0.85, 0], [1.25, -25]];
+  function majJauges(p) {
+    jauges.forEach((j, i) => {
+      const [k, d] = COEFS_JAUGES[i];
+      let v = (p + d) * k + (Math.random() - 0.5) * 4;
+      v = p >= 100 ? 100 : Math.max(0, Math.min(99, v));
+      j.f.style.width = v.toFixed(0) + '%';
+      j.v.textContent = v.toFixed(0) + '%';
+    });
+  }
+
+  // Fenêtre ACCÈS ROOT : une barre de progression par tâche
+  const lignesRoot = TACHES_ROOT.map(([nom]) => {
+    const d = document.createElement('div');
+    d.className = 'rt';
+    d.innerHTML = '<div class="rt-l"><span></span><em>EN ATTENTE</em><b>0%</b></div><div class="jb"><div class="jf"></div></div>';
+    d.querySelector('span').textContent = nom;
+    rootListe.appendChild(d);
+    return { f: d.querySelector('.jf'), v: d.querySelector('b'), e: d.querySelector('em') };
+  });
+  function majRoot(p) {
+    lignesRoot.forEach((l, i) => {
+      const [, debut, k] = TACHES_ROOT[i];
+      let v = (p - debut) / (100 - debut) * 100 * k + (p > debut ? (Math.random() - 0.5) * 3 : 0);
+      v = p >= 100 ? 100 : Math.max(0, Math.min(99, v));
+      l.f.style.width = v.toFixed(0) + '%';
+      l.v.textContent = v.toFixed(0) + '%';
+      l.e.textContent = v <= 0 ? 'EN ATTENTE' : (v >= 100 ? 'TERMINÉ' : 'EN COURS');
+      l.e.className = v >= 100 ? 'fin' : (v > 0 ? 'cours' : '');
+    });
+  }
+
+  // Fenêtre JOURNAL D'ERREURS : une erreur apparaît en rouge, puis passe en "RÉPARÉ"
+  function majErr() {
+    errBilan.textContent = 'DÉTECTÉES ' + errTotal + '  //  RÉPARÉES ' + errFixed + '  //  CRITIQUES ' + errCrit;
+  }
+  function ajouterErreur(s) {
+    const ms = performance.now() - rebootT0;
+    const horo = String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') +
+      '.' + String(Math.floor(ms % 1000)).padStart(3, '0');
+    const grave = Math.random() < 0.2;
+    errTotal++;
+    if (grave) errCrit++;
+    const l = document.createElement('div');
+    l.className = 'lg';
+    l.innerHTML = '<span class="lt"></span><span class="bad">[' + (grave ? 'CRITIQUE' : 'ERREUR') + ']</span>';
+    l.firstChild.textContent = '[' + horo + '] ERR_0x' + hex(4) + '  ' + ERREURS[Math.floor(Math.random() * ERREURS.length)];
+    errLog.appendChild(l);
+    while (errLog.children.length > 10) errLog.removeChild(errLog.firstChild);
+    majErr();
+    const tag = l.lastChild;
+    setTimeout(() => {
+      if (s !== session || !tag.classList.contains('bad')) return;
+      tag.className = 'ok';
+      tag.textContent = '[RÉPARÉ]';
+      errFixed++;
+      majErr();
+    }, alea(600, 1300));
+  }
+
+  // Ouverture / fermeture d'une fenêtre avec un petit effet de scintillement
+  function ouvrirFenetre(f) {
+    f.style.display = 'block';
+    f.animate([
+      { opacity: 0, transform: 'scale(0.9, 0.04)' },
+      { opacity: 1, transform: 'scale(1.04, 0.04)', offset: 0.25 },
+      { opacity: 0.5, transform: 'scale(1, 1.05)', offset: 0.55 },
+      { opacity: 1, transform: 'scale(1, 1)', offset: 0.7 },
+      { opacity: 0.6, offset: 0.82 },
+      { opacity: 1, transform: 'none' }
+    ], { duration: 520 });
+  }
+  async function fermerFenetre(f) {
+    await f.animate([
+      { opacity: 1, transform: 'none' },
+      { opacity: 0.6, transform: 'scale(1.02, 0.5)', offset: 0.5 },
+      { opacity: 0, transform: 'scale(0.9, 0.04)' }
+    ], { duration: 260 }).finished;
+    f.style.display = 'none';
+  }
+
+  // Les trois fenêtres : RÉINITIALISATION (tout de suite), JOURNAL D'ERREURS (à 12 %), ACCÈS ROOT (à 28 %, finit à 70 %)
+  async function lancerReboot(s) {
+    etat = 'reboot';
+    // Tout s'adapte à la taille de l'écran
+    const ech = Math.min(1, window.innerWidth / 1480, window.innerHeight / 940);
+    rbScene.style.transform = 'scale(' + ech.toFixed(3) + ')';
+    [rbMain, rbRoot, rbErr].forEach((f) => { f.style.display = 'none'; });
+    [rebootCadre, rootCadre, errCadre].forEach((c) => { c.style.animation = ''; c.style.background = ''; });
+    rebootFill.style.width = '0%';
+    rebootPct.textContent = '0%';
+    rebootSous.textContent = ETAPES_REBOOT[0][1];
+    rebootTitre.textContent = 'RÉINITIALISATION';
+    rebootMeta.textContent = 'SESSION ' + hex(4) + '-' + hex(4) + '  //  ACCÈS ROOT';
+    rootTitre.textContent = 'ACCÈS ROOT';
+    rootSous.textContent = 'capri@night-city:~#  ÉLÉVATION DES PRIVILÈGES...';
+    errTitre.textContent = "JOURNAL D'ERREURS";
+    rebootLog.innerHTML = '';
+    errLog.innerHTML = '';
+    indexLog = 0; errTotal = 0; errFixed = 0; errCrit = 0; rootFermee = false;
+    majErr(); majJauges(0); majRoot(0);
+    rebootT0 = performance.now();
+    rebootEl.style.display = 'block';
+    ouvrirFenetre(rbMain);
+    ajouterLog();
+
+    let errOuverte = false, rootOuverte = false, rootFinie = false;
+    let p = 0;
+    while (p < 100) {
+      await wait(alea(100, 240));
+      if (s !== session) return;
+      if (Math.random() < 0.1) {                 // de temps en temps la barre se bloque un instant
+        await wait(alea(250, 600));
+        if (s !== session) return;
+      }
+      p = Math.min(100, p + alea(1.8, 5.5));
+      const n = Math.floor(p);
+      rebootFill.style.width = n + '%';
+      rebootPct.textContent = n + '%';
+      for (const [seuil, txt] of ETAPES_REBOOT) if (n >= seuil) rebootSous.textContent = txt;
+      if (!errOuverte && p >= 12) { errOuverte = true; ouvrirFenetre(rbErr); }
+      if (!rootOuverte && p >= OUVERTURE_ROOT) { rootOuverte = true; ouvrirFenetre(rbRoot); }
+      majJauges(p);
+      if (rootOuverte && !rootFinie) {
+        // Sa propre progression : elle va de 0 à 100 % entre OUVERTURE_ROOT et FIN_ROOT
+        const pr = Math.min(100, (p - OUVERTURE_ROOT) / (FIN_ROOT - OUVERTURE_ROOT) * 100);
+        majRoot(pr);
+        if (pr >= 100) { rootFinie = true; finirRoot(s); }
+      }
+      ajouterLog();
+      if (errOuverte && Math.random() < 0.6) ajouterErreur(s);
+    }
+
+    // Terminé : tous les cadres passent au vert, toutes les erreurs sont réparées
+    majJauges(100);
+    majRoot(100);
+    errLog.querySelectorAll('.bad').forEach((t) => { t.className = 'ok'; t.textContent = '[RÉPARÉ]'; });
+    errFixed = errTotal;
+    majErr();
+    rebootTitre.textContent = 'RÉINITIALISATION TERMINÉE';
+    rebootSous.textContent = 'CAPRI // ACCÈS ACCORDÉ';
+    rootTitre.textContent = 'ACCÈS ROOT ACCORDÉ';
+    rootSous.textContent = 'capri@night-city:~#  PRIVILÈGES MAXIMAUX';
+    errTitre.textContent = 'JOURNAL D\'ERREURS : TOUT EST RÉPARÉ';
+    [rebootCadre, rootCadre, errCadre].forEach((c) => { c.style.animation = 'none'; c.style.background = 'var(--vert)'; });
+    await wait(1500);
+    if (s !== session) return;
+    if (!rootFermee) { fermerFenetre(rbRoot); await wait(150); }
+    fermerFenetre(rbErr);
+    await wait(150);
+    await fermerFenetre(rbMain);
+    if (s !== session) return;
+    rebootEl.style.display = 'none';
+    afficherUSB(false);
+    await wait(250);
+    if (s !== session) return;
+    reapparaitre(s);
+  }
+
+  // Deux ou trois très grands éclairs blancs tombent presque d'un coup du haut de l'écran, sur son point de retour
+  const NB_GRANDS_ECLAIRS = 3;      // 2 ou 3 : nombre de grands éclairs
+  const DECALAGE_ECLAIRS = 90;      // temps entre deux éclairs (ms) : plus petit = ils tombent presque en même temps
+  // Les couleurs de Capri (les mêmes que sa traînée de code) : rose, vert, et blanc avec une lueur rose
+  // Chaque paire = [couleur de l'éclair, couleur de sa lueur]. Le 1er éclair prend la 1re paire, etc.
+  const COULEURS_RETOUR = [['#fb116e', '#fb116e'], ['#01ec54', '#01ec54'], ['#ffffff', '#fb116e']];
+  // Un flash de couleur qui éclaire tout l'écran un instant (force = de 0 à 1)
+  function flashBlanc(duree, force, couleur = '#ffffff') {
+    const f = document.createElement('div');
+    f.style.cssText = 'position:fixed;inset:0;z-index:96;pointer-events:none;background:' + couleur;
+    document.body.appendChild(f);
+    f.animate([{ opacity: 0 }, { opacity: force, offset: 0.15 }, { opacity: 0 }], { duration: duree }).onfinish = () => f.remove();
+  }
+  async function grandsEclairs(x, bas, s) {
+    for (let i = 0; i < NB_GRANDS_ECLAIRS; i++) {
+      setTimeout(() => {
+        if (s !== session) return;
+        const xi = x + (i === 0 ? 0 : alea(-170, 170));    // le premier tombe pile sur elle, les autres autour
+        const [col, lueur] = COULEURS_RETOUR[i % COULEURS_RETOUR.length];
+        eclair(xi + alea(-120, 120), -10, xi, bas, {
+          couleur: col, halo: lueur, coeur: '#ffffff',
+          epaisseur: 6, duree: 800, descente: 70,
+          rugosite: 0.4, pas: 8, branches: 0.09, echelleBr: 1.3
+        });
+        impact(xi, bas, true);
+        flashBlanc(220, 0.2, lueur);
+      }, i * DECALAGE_ECLAIRS);
+    }
+    await wait((NB_GRANDS_ECLAIRS - 1) * DECALAGE_ECLAIRS + 160);
+  }
+
+  // Capri revient : les éclairs convergent sur un point, et elle apparaît d'un coup, assise
+  async function reapparaitre(s) {
+    etat = 'reboot';
+    ay = 0; cibleAy = 0; rot = 0; phi = 0; omega = 0;
+    walker.style.transformOrigin = '';
+    await setPoseAssise();
+    if (s !== session) return;
+    await wait(60);
+    if (s !== session) return;
+    const w = sprite.offsetWidth;
+    ax = alea(w, Math.max(w, window.innerWidth - 2 * w));
+    adir = 1;
+    majTransform(1);
+    walker.style.opacity = 0;
+    sprite.style.transform = '';
+
+    // Les grands éclairs tombent sur l'endroit où elle va apparaître
+    const x = ax + w / 2, bas = window.innerHeight - 2;
+    retirerPilier();                       // la colonne de lumière de la puce disparaît
+    await grandsEclairs(x, bas, s);
+    if (s !== session) return;
+
+    // Gros flash, et elle est là d'un coup
+    flashBlanc(350, 0.4, '#fb116e');
+    impact(x, bas);
+    walker.style.opacity = 1;
+    walker.style.pointerEvents = '';
+    walker.animate([{ filter: 'brightness(5)' }, { filter: 'none' }], { duration: 300 });
+
+    etat = 'parle';
+    raf = requestAnimationFrame(boucle);
+    const fini = await direPhrase(PHRASES_REBOOT, 2500, 800);
+    if (!fini || s !== session) return;
+
+    adir = Math.random() < 0.5 ? -1 : 1;
+    const ok = await transformer(MARCHE, s);
+    if (!ok) return;
+    etat = 'marche';
+    const t = performance.now();
+    finEtat = t + alea(4000, 9000);
+    prochaineEscapade = t + alea(ESCAPADE_MIN, ESCAPADE_MAX);
+    prochaineBulle = t + alea(BULLE_MIN, BULLE_MAX);
+  }
+
+  // Attraper la puce avec la souris, et la glisser dans un port
+  puceEl.addEventListener('mouseenter', () => { survolPuce = true; majClic(); });
+  puceEl.addEventListener('mouseleave', () => { survolPuce = false; majClic(); });
+  puceEl.addEventListener('contextmenu', (e) => { e.preventDefault(); ouvrirMenu(e.clientX, e.clientY); });
+  puceEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !enAnim || etat !== 'puce' || !puceActive) return;
+    if (puceMode === 'entre' || puceMode === 'tenue') return;
+    e.preventDefault();
+    puceEl.setPointerCapture(e.pointerId);
+    const dx = puceX - e.clientX, dy = puceY - e.clientY; // la puce ne "saute" pas vers le curseur
+    let lx = e.clientX, ly = e.clientY, lt = performance.now(), vx = 0, vy = 0;
+    puceMode = 'tenue';
+    puceVX = 0; puceVY = 0;
+    dernierFragX = puceX; dernierFragY = puceY;
+    puceTenue = true;
+    puceEl.classList.add('tenue');
+    majClic();
+
+    const bouge = (m) => {
+      const t = performance.now(), d = Math.max(0.001, (t - lt) / 1000);
+      vx += (((m.clientX - lx) / d) - vx) * 0.4;
+      vy += (((m.clientY - ly) / d) - vy) * 0.4;
+      lx = m.clientX; ly = m.clientY; lt = t;
+      puceX = m.clientX + dx;
+      puceY = m.clientY + dy;
+      portSurvole = portSous(m.clientX, m.clientY);   // le port s'allume quand on est dessus
+      surlignerPort(portSurvole);
+    };
+    const fin = () => {
+      puceEl.removeEventListener('pointermove', bouge);
+      puceEl.removeEventListener('pointerup', fin);
+      puceEl.removeEventListener('pointercancel', fin);
+      puceTenue = false;
+      puceEl.classList.remove('tenue');
+      survolPuce = puceEl.matches(':hover');
+      majClic();
+      if (performance.now() - lt > 80) { vx = 0; vy = 0; } // la souris était immobile
+      const port = portSous(lx, ly);
+      if (port) {
+        inserer(port);
+      } else {                                              // pas dans un port : elle retombe au sol
+        portSurvole = null;
+        surlignerPort(null);
+        puceVX = borner(vx, -1500, 1500);
+        puceVY = borner(vy, -1500, 1500);
+        puceMode = 'vol';
+      }
+    };
+    puceEl.addEventListener('pointermove', bouge);
+    puceEl.addEventListener('pointerup', fin);
+    puceEl.addEventListener('pointercancel', fin);
+  });
+
+  // ===== Foudre réaliste =====
+
+  // Ligne brisée entre deux points (déplacement du point milieu, de plus en plus fin)
+  function zigzag(x1, y1, x2, y2, rugosite, pas) {
+    const pts = [[x1, y1]];
+    (function sub(ax_, ay_, bx_, by_) {
+      const len = Math.hypot(bx_ - ax_, by_ - ay_);
+      if (len <= pas) { pts.push([bx_, by_]); return; }
+      const nx = -(by_ - ay_) / len, ny = (bx_ - ax_) / len;
+      const d = (Math.random() - 0.5) * len * rugosite;
+      const mx = (ax_ + bx_) / 2 + nx * d, my = (ay_ + by_) / 2 + ny * d;
+      sub(ax_, ay_, mx, my);
+      sub(mx, my, bx_, by_);
+    })(x1, y1, x2, y2);
+    return pts;
+  }
+
+  // Tronc principal + branches qui partent vers le bas
+  function construire(x1, y1, x2, y2, o) {
+    const segments = [];
+    const principal = zigzag(x1, y1, x2, y2, o.rugosite, o.pas);
+    segments.push({ pts: principal, l: 1, delai: 0 });
+    let nb = 0;
+    for (let i = 5; i < principal.length - 8 && nb < 7; i++) {
+      if (Math.random() < o.branches) {
+        nb++;
+        const [bx, by] = principal[i];
+        const ang = Math.PI / 2 + (Math.random() < 0.5 ? -1 : 1) * alea(0.35, 1.0);
+        const L = alea(70, 220) * o.echelleBr;
+        segments.push({
+          pts: zigzag(bx, by, bx + Math.cos(ang) * L, by + Math.sin(ang) * L, 0.5, o.pas),
+          l: 0.45,
+          delai: i / principal.length
+        });
+      }
+    }
+    return segments;
+  }
+
+  // Dessine un éclair : il descend très vite, puis scintille comme un vrai
+  // o : couleur (trait), halo (lueur), epaisseur, duree, descente, rugosite, pas, branches, echelleBr
+  function eclair(x1, y1, x2, y2, o) {
+    const segs = construire(x1, y1, x2, y2, o);
+
+    // Boîte englobante : le svg ne couvre que l'éclair (plus léger pour l'ordinateur)
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    segs.forEach((s) => s.pts.forEach((p) => {
+      minx = Math.min(minx, p[0]); maxx = Math.max(maxx, p[0]);
+      miny = Math.min(miny, p[1]); maxy = Math.max(maxy, p[1]);
+    }));
+    const pad = 30;
+    const W = maxx - minx + pad * 2, H = maxy - miny + pad * 2;
+
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', (minx - pad) + ' ' + (miny - pad) + ' ' + W + ' ' + H);
+    svg.style.cssText = 'position:fixed;pointer-events:none;z-index:98;overflow:visible;' +
+      'left:' + (minx - pad) + 'px;top:' + (miny - pad) + 'px;width:' + W + 'px;height:' + H + 'px;' +
+      'filter:drop-shadow(0 0 3px ' + o.halo + ') drop-shadow(0 0 10px ' + o.halo + ')';
+
+    const trace = (s, couleur, largeur, opacite) => {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', 'M' + s.pts.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join('L'));
+      p.setAttribute('fill', 'none');
+      p.setAttribute('stroke', couleur);
+      p.setAttribute('stroke-width', largeur);
+      p.setAttribute('stroke-linecap', 'round');
+      p.setAttribute('stroke-linejoin', 'round');
+      p.setAttribute('pathLength', '1');
+      p.setAttribute('opacity', opacite);
+      p.style.strokeDasharray = '1';
+      svg.appendChild(p);
+      // L'éclair se "dessine" du haut vers le bas en un clin d'œil
+      p.animate(
+        [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+        { duration: o.descente * (s.l === 1 ? 1 : 0.5), delay: s.delai * o.descente, fill: 'both', easing: 'linear' }
+      );
+    };
+
+    segs.forEach((s) => {
+      const e = o.epaisseur * s.l;
+      trace(s, o.halo, e * 3.5, 0.45);   // lueur large
+      trace(s, o.couleur, e * 1.6, 0.9); // trait coloré
+      trace(s, o.coeur || '#fff', e * 0.8, 1);      // cœur blanc
+    });
+
+    document.body.appendChild(svg);
+
+    // Scintillement : plusieurs réamorçages, comme un vrai éclair
+    svg.animate([
+      { opacity: 1, offset: 0 },
+      { opacity: 1, offset: 0.12 },
+      { opacity: 0.25, offset: 0.2 },
+      { opacity: 1, offset: 0.3 },
+      { opacity: 0.35, offset: 0.42 },
+      { opacity: 0.85, offset: 0.52 },
+      { opacity: 0.15, offset: 0.7 },
+      { opacity: 0, offset: 1 }
+    ], { duration: o.duree, fill: 'forwards' }).onfinish = () => svg.remove();
+  }
+
+  // Petits carrés qui partent dans tous les sens (avec gravité)
+  // o : couleurs, n, vmin, vmax, tailleMin, tailleMax, angleMin, angleMax, duree (ms) ou sol:true
+  function particules(x, y, o) {
+    const G = 1600; // gravité (pixels par seconde au carré)
+    for (let i = 0; i < o.n; i++) {
+      const a = alea(o.angleMin, o.angleMax), v = alea(o.vmin, o.vmax);
+      const vx = Math.cos(a) * v, vy = Math.sin(a) * v;
+      const t = alea(o.tailleMin, o.tailleMax);
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;pointer-events:none;z-index:97;will-change:transform,opacity;' +
+        'left:' + (x - t / 2) + 'px;top:' + (y - t / 2) + 'px;width:' + t + 'px;height:' + t + 'px;' +
+        'background:' + o.couleurs[Math.floor(Math.random() * o.couleurs.length)];
+      document.body.appendChild(el);
+
+      // Au sol : le carré retombe à la hauteur de départ. Sinon : durée fixe.
+      const D = o.sol ? Math.min(1.1, Math.max(0.25, 2 * Math.abs(vy) / G)) : (o.duree / 1000) * alea(0.7, 1);
+      const rot = alea(-720, 720);
+      const N = 14, kf = [];
+      for (let k = 0; k <= N; k++) {
+        const s = (k / N) * D;
+        kf.push({
+          transform: 'translate(' + (vx * s).toFixed(1) + 'px,' + (vy * s + 0.5 * G * s * s).toFixed(1) + 'px) rotate(' + (rot * s).toFixed(0) + 'deg)',
+          opacity: k > N - 3 ? (N - k) / 3 : 1
+        });
+      }
+      el.animate(kf, { duration: D * 1000, easing: 'linear' }).onfinish = () => el.remove();
+    }
+  }
+
+  // Impact du tonnerre sur le sol : halo, onde de choc, carrés qui partent partout
+  function impact(x, bas, sansBlocs) {
+    const halo = document.createElement('div');
+    halo.style.cssText = 'position:fixed;pointer-events:none;z-index:97;border-radius:50%;' +
+      'left:' + (x - 110) + 'px;top:' + (bas - 34) + 'px;width:220px;height:68px;' +
+      'background:radial-gradient(ellipse, rgba(255,255,255,0.95) 0, rgba(190,215,255,0.55) 35%, transparent 70%)';
+    document.body.appendChild(halo);
+    halo.animate(
+      [{ opacity: 1, transform: 'scale(0.4)' }, { opacity: 0.8, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.3)' }],
+      { duration: 380, easing: 'ease-out' }
+    ).onfinish = () => halo.remove();
+
+    const onde = document.createElement('div');
+    onde.style.cssText = 'position:fixed;pointer-events:none;z-index:97;border-radius:50%;' +
+      'border:2px solid rgba(255,255,255,0.85);' +
+      'left:' + (x - 20) + 'px;top:' + (bas - 12) + 'px;width:40px;height:12px';
+    document.body.appendChild(onde);
+    onde.animate(
+      [{ opacity: 0.9, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(8)' }],
+      { duration: 360, easing: 'ease-out' }
+    ).onfinish = () => onde.remove();
+
+    if (!sansBlocs) particules(x, bas - 2, {
+      couleurs: ['#ffffff', '#ffffff', '#e6f0ff', '#9fb4cc', '#5b6b80', '#2b3340'],
+      n: 36, vmin: 250, vmax: 800, tailleMin: 3, tailleMax: 9,
+      angleMin: -Math.PI * 0.95, angleMax: -Math.PI * 0.05, sol: true
+    });
+  }
+
+  // Mini-éclairs de couleurs différentes qui frappent Capri
+  function frappes() {
+    const r = sprite.getBoundingClientRect();
+    for (let i = 0; i < 9; i++) {
+      setTimeout(() => {
+        const c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        const cx = r.left + r.width * alea(0.2, 0.8);
+        const cy = r.top + r.height * alea(0.15, 0.9);
+        const haut = Math.max(-10, r.top - alea(160, 380));
+        eclair(cx + alea(-140, 140), haut, cx, cy, {
+          couleur: c, halo: c, epaisseur: alea(1.6, 2.8),
+          duree: alea(300, 450), descente: 45,
+          rugosite: 0.45, pas: 5, branches: 0.06, echelleBr: 0.4
+        });
+        particules(cx, cy, {
+          couleurs: [c, c, '#ffffff'], n: 7, vmin: 120, vmax: 380,
+          tailleMin: 2, tailleMax: 5, angleMin: -Math.PI, angleMax: Math.PI, duree: 420
+        });
+        // Capri s'illumine à chaque impact
+        walker.animate(
+          [{ filter: 'none' }, { filter: 'brightness(1.9) drop-shadow(0 0 12px ' + c + ')' }, { filter: 'none' }],
+          { duration: 160 }
+        );
+      }, i * 28 + alea(0, 25));
+    }
+  }
+
+  // ===== Écrasement / retour à la forme (rapide) =====
+  const ECRASE = 'scale(1.5, 0.06)';
+  async function ecrase() {
+    const a = sprite.animate(
+      [{ transform: 'scale(1,1)' }, { transform: ECRASE }],
+      { duration: 100, easing: 'ease-in', fill: 'forwards' }
+    );
+    await a.finished;
+    sprite.style.transform = ECRASE;
+    a.cancel();
+  }
+  async function reforme(duree) {
+    await sprite.animate([
+      { transform: ECRASE },
+      { transform: 'scale(1.2, 0.6)', offset: 0.35 },
+      { transform: 'scale(0.94, 1.08)', offset: 0.7 },
+      { transform: 'scale(1, 1)' }
+    ], { duration: duree, easing: 'ease-out' }).finished;
+    sprite.style.transform = '';
+  }
+
+  // Changement d'image : mini-éclairs, écrasement, nouvelle image, retour à la forme
+  async function transformer(n, s) {
+    frappes();
+    await wait(150);
+    if (s !== session) return false;
+    await ecrase();
+    if (s !== session) return false;
+    setPose(n);
+    await wait(20);
+    if (s !== session) return false;
+    ax = Math.min(ax, Math.max(0, window.innerWidth - sprite.offsetWidth));
+    await reforme(340);
+    return s === session;
+  }
+
+  // Elle s'assoit au sol, dit sa phrase, puis se relève et repart marcher
+  async function parlerAssise(s) {
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    await setPoseAssise();
+    if (s !== session) return;
+    await wait(30);
+    if (s !== session) return;
+    ax = borner(ax, 0, Math.max(0, window.innerWidth - sprite.offsetWidth));
+    await reforme(340);
+    if (s !== session) return;
+
+    etat = 'parle';
+    const fini = await direPhrase();
+    if (!fini || s !== session) return;
+
+    adir = Math.random() < 0.5 ? -1 : 1;
+    const ok = await transformer(MARCHE, s);
+    if (!ok) return;
+    etat = 'marche';
+    finEtat = performance.now() + alea(4000, 10000);
+    prochaineBulle = performance.now() + alea(BULLE_MIN, BULLE_MAX);
+  }
+
+  // ===== Traînée pluie de code (couleurs de Capri) derrière Capri quand on la tient =====
+  // Un caractère de code apparaît sur son corps, dérive sur le côté et retombe en s'effaçant
+  function glyphe(x, y) {
+    const [couleur, lueur] = TRAINEE_PALETTE[Math.floor(Math.random() * TRAINEE_PALETTE.length)];
+    const el = document.createElement('div');
+    el.textContent = TRAINEE_CARACTERES[Math.floor(Math.random() * TRAINEE_CARACTERES.length)];
+    el.style.cssText = 'position:absolute;pointer-events:none;white-space:pre;' +
+      'font-family:Consolas,"Courier New",monospace;font-weight:bold;' +
+      'left:' + x + 'px;top:' + y + 'px;font-size:' + alea(10, 15).toFixed(0) + 'px;' +
+      'color:' + couleur + ';text-shadow:0 0 6px ' + lueur + ';';
+    anim.insertBefore(el, walker); // derrière Capri
+    const dx = alea(-14, 14), chute = alea(30, 70);
+    el.animate([
+      { opacity: 0.95, transform: 'translate(0px,0px)' },
+      { opacity: 0, transform: 'translate(' + dx.toFixed(1) + 'px,' + chute.toFixed(1) + 'px)' }
+    ], { duration: TRAINEE_DUREE * alea(0.8, 1.2), easing: 'ease-in' }).onfinish = () => el.remove();
+  }
+
+  // Appelée à chaque image pendant qu'on tient Capri
+  function emettreTrainee(now, bx, by) {
+    histCorps.push({ x: bx, y: by, t: now });
+    while (histCorps.length > 1 && now - histCorps[0].t > 120) histCorps.shift();
+    if (now < prochaineTrainee || histCorps.length < 2) return;
+    const a = histCorps[0];
+    const duree = (now - a.t) / 1000;
+    if (Math.hypot(bx - a.x, by - a.y) / duree < TRAINEE_VITESSE) return;
+    prochaineTrainee = now + TRAINEE_PAUSE;
+    const n = TRAINEE_NOMBRE_MIN + Math.floor(Math.random() * (TRAINEE_NOMBRE_MAX - TRAINEE_NOMBRE_MIN + 1));
+    for (let i = 0; i < n; i++) glyphe(bx + alea(-42, 42), by + alea(-52, 52)); // zone un peu plus large : ça se répartit mieux
+  }
+
+  // Des petits fichiers qui giclent d'un point (avec gravité)
+  const LENTEUR_FICHIERS = 1.4;   // 1 = comme avant ; plus grand = les fichiers volent plus lentement
+  function fichiers(x, y, n) {
+    const G = 1600;
+    for (let i = 0; i < n; i++) {
+      const a = alea(-Math.PI * 0.97, -Math.PI * 0.03), v = alea(320, 950);
+      const vx = Math.cos(a) * v, vy = Math.sin(a) * v;
+      const w = alea(16, 30), h = w * 1.3;
+      const col = COULEURS_FICHIERS[Math.floor(Math.random() * COULEURS_FICHIERS.length)];
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;pointer-events:none;z-index:97;will-change:transform,opacity;' +
+        'left:' + (x - w / 2) + 'px;top:' + (y - h / 2) + 'px;width:' + w + 'px;height:' + h + 'px;' +
+        'background-color:' + col + ';' +
+        'background-image:repeating-linear-gradient(0deg, rgba(0,0,0,0.45) 0 2px, transparent 2px 5px);' +
+        'background-size:100% 60%;background-repeat:no-repeat;background-position:0 100%;' +
+        'clip-path:polygon(0 0, 68% 0, 100% 26%, 100% 100%, 0 100%)';
+      document.body.appendChild(el);
+      // Même trajectoire qu'avant, mais parcourue plus lentement
+      const D = Math.min(1.4, Math.max(0.4, 2 * Math.abs(vy) / G));
+      const rot = alea(-540, 540);
+      const N = 16, kf = [];
+      for (let k = 0; k <= N; k++) {
+        const s = (k / N) * D;
+        kf.push({
+          transform: 'translate(' + (vx * s).toFixed(1) + 'px,' + (vy * s + 0.5 * G * s * s).toFixed(1) + 'px) rotate(' + (rot * s).toFixed(0) + 'deg)',
+          opacity: k > N - 3 ? (N - k) / 3 : 1
+        });
+      }
+      el.animate(kf, { duration: D * 1000 * LENTEUR_FICHIERS, easing: 'linear' }).onfinish = () => el.remove();
+    }
+  }
+
+  // Gerbe à l'impact : des éclairs qui partent dans tous les sens, et des fichiers qui giclent
+  function explosionImpact(x, y) {
+    for (let i = 0; i < NB_ECLAIRS_IMPACT; i++) {
+      setTimeout(() => {
+        const c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        const ang = -Math.PI * alea(0.03, 0.97);   // vers le haut, à gauche et à droite
+        const len = alea(90, 260);
+        eclair(x, y - 2, x + Math.cos(ang) * len, y - 2 + Math.sin(ang) * len, {
+          couleur: c, halo: c, epaisseur: alea(1.8, 3),
+          duree: alea(320, 480), descente: 55,
+          rugosite: 0.5, pas: 5, branches: 0, echelleBr: 0
+        });
+      }, i * 18);
+    }
+    fichiers(x, y - 4, NB_FICHIERS);
+  }
+
+  // ===== Atterrissage : elle s'écrase comme une crêpe, se plaint, puis repart =====
+  // (parfois, une puce jaillit avec les fichiers : voir la section "La puce" plus haut)
+  async function atterrir(s) {
+    etat = 'ecrasee';
+    ay = 0; rot = 0; phi = 0; omega = 0;
+    walker.style.transformOrigin = '';
+    ax = borner(ax, 0, Math.max(0, window.innerWidth - sprite.offsetWidth));
+    const xi = ax + sprite.offsetWidth / 2, yi = window.innerHeight - 2;
+    impact(xi, yi, true);
+    explosionImpact(xi, yi);
+    const avecPuce = Math.random() < CHANCE_PUCE;   // une chance sur quelques-unes qu'une puce tombe
+    if (avecPuce) lancerPuce(xi, yi);
+
+    // Écrasement
+    const a = sprite.animate([
+      { transform: 'scale(1, 1)' },
+      { transform: 'scale(1.5, 0.2)', offset: 0.5 },
+      { transform: CREPE }
+    ], { duration: 240, easing: 'ease-out', fill: 'forwards' });
+    await a.finished.catch(() => {});
+    if (s !== session) return;
+    sprite.style.transform = CREPE;
+    a.cancel();
+
+    // Elle se plaint
+    const fini = await direPhrase(PHRASES_AIE, DUREE_CREPE, 600);
+    if (!fini || s !== session) return;
+
+    // Avec la puce : la foudre la fait disparaître, il faut glisser la puce dans un port USB
+    if (avecPuce) { await sequencePuce(s); return; }
+
+    // Éclairs, puis elle reprend forme et repart marcher
+    frappes();
+    await wait(200);
+    if (s !== session) return;
+    adir = Math.random() < 0.5 ? -1 : 1;
+    setPose(MARCHE);
+    await wait(20);
+    if (s !== session) return;
+    ax = borner(ax, 0, Math.max(0, window.innerWidth - sprite.offsetWidth));
+    await sprite.animate([
+      { transform: CREPE },
+      { transform: 'scale(1.1, 0.7)', offset: 0.35 },
+      { transform: 'scale(0.94, 1.08)', offset: 0.7 },
+      { transform: 'scale(1, 1)' }
+    ], { duration: 340, easing: 'ease-out' }).finished.catch(() => {});
+    sprite.style.transform = '';
+    if (s !== session) return;
+    etat = 'marche';
+    const t = performance.now();
+    finEtat = t + alea(4000, 9000);
+    prochaineEscapade = t + alea(ESCAPADE_MIN, ESCAPADE_MAX);
+    prochaineBulle = t + alea(BULLE_MIN, BULLE_MAX);
+  }
+
+  // ===== Lancement de la balade =====
+  async function animer() {
+    call.style.display = 'none';
+    ipcRenderer.send('mode', 'anim');
+    enAnim = true;
+    const s = ++session;
+    await wait(250);
+    if (s !== session) return;
+    anim.style.display = 'block';
+    document.body.classList.add('enAnim'); // les ports USB passent en haut à droite de l'écran
+    afficherUSB(false);
+    demarrerBalade(s);
+  }
+
+  async function demarrerBalade(s) {
+    etat = 'cache';
+    cacherBulle();
+    ay = 0; cibleAy = 0;   // elle apparaît au sol
+    fenetre = null;
+    setPose(MARCHE);
+    await wait(60);
+    if (s !== session) return;
+    const w = sprite.offsetWidth;
+    ax = alea(w, Math.max(w, window.innerWidth - 2 * w));
+    adir = Math.random() < 0.5 ? -1 : 1;
+    majTransform(adir * SENS_MARCHE);
+    walker.style.opacity = 0;
+    sprite.style.transform = ECRASE;
+
+    // Le tonnerre blanc tombe du haut de l'écran jusqu'au sol
+    const x = ax + w / 2, bas = window.innerHeight - 2;
+    eclair(x + alea(-90, 90), -10, x, bas, {
+      couleur: '#dfeaff', halo: 'rgba(190,215,255,0.95)', epaisseur: 3.5,
+      duree: 750, descente: 85, rugosite: 0.38, pas: 7, branches: 0.05, echelleBr: 1
+    });
+    await wait(85);
+    if (s !== session) return;
+
+    // Impact : explosion de carrés, et Capri apparaît tout de suite
+    impact(x, bas);
+    walker.style.opacity = 1;
+    walker.animate([{ filter: 'brightness(3)' }, { filter: 'none' }], { duration: 260 });
+    await reforme(380);
+    if (s !== session) return;
+
+    etat = 'marche';
+    finEtat = performance.now() + alea(4000, 9000);
+    prochaineEscapade = performance.now() + (escapadeVite ? alea(2500, 4000) : alea(ESCAPADE_MIN, ESCAPADE_MAX));
+    escapadeVite = false;
+    prochaineBulle = performance.now() + alea(BULLE_MIN, BULLE_MAX);
+    raf = requestAnimationFrame(boucle);
+  }
+
+  // ===== Capri s'assoit sur une nouvelle fenêtre =====
+  // r : { x, y, w, h } = position de la fenêtre dans l'écran (reçue de main.js)
+
+  // Hauteur du bas de Capri (en pixels depuis le haut de l'écran) quand elle est assise sur la fenêtre.
+  // Si la fenêtre touche le haut de l'écran (plein écran), elle s'assoit juste en dessous.
+  function bordAssise(r, h) {
+    return Math.max(r.y, h + 8);
+  }
+
+  async function surFenetre(r) {
+    if (!enAnim) return;
+    const s = ++session;
+    cancelAnimationFrame(raf);
+    etat = 'cache';
+    fenetre = r;
+    fermeeEnAttente = false;
+    decalageX = null; // première arrivée : place au hasard
+
+    // Capri disparaît de là où elle est, dans une salve de mini-éclairs
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    walker.style.opacity = 0;
+
+    // On prépare l'image assise
+    await setPoseAssise();
+    if (s !== session) return;
+    await wait(40);
+    if (s !== session) return;
+    placerEtFrapper(s);
+  }
+
+  // De temps en temps : elle disparaît et réapparaît à un autre endroit de la même fenêtre
+  async function changerDeCoin() {
+    if (!enAnim || !fenetre) return;
+    const s = ++session;
+    cancelAnimationFrame(raf);
+    etat = 'cache';
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    walker.style.opacity = 0;
+    await wait(120);
+    if (s !== session) return;
+    placerEtFrapper(s);
+  }
+
+  // Choisit une place sur le haut de la fenêtre, fait tomber le tonnerre et fait apparaître Capri
+  async function placerEtFrapper(s) {
+    const r = fenetre;
+    const w = sprite.offsetWidth, h = sprite.offsetHeight;
+
+    // Nouvelle place : assez loin de l'ancienne si la fenêtre est assez large
+    const ancien = decalageX;
+    let nouveau = alea(0.1, 0.9) * r.w - w / 2;
+    for (let i = 0; i < 12 && ancien !== null && Math.abs(nouveau - ancien) < r.w * 0.25; i++) {
+      nouveau = alea(0.1, 0.9) * r.w - w / 2;
+    }
+    decalageX = nouveau;
+
+    ax = borner(r.x + decalageX, 0, Math.max(0, window.innerWidth - w));
+    const yBas = bordAssise(r, h);
+    ay = window.innerHeight - yBas;
+    cibleAx = ax; cibleAy = ay;
+    majTransform(1);
+    sprite.style.transform = ECRASE;
+
+    // Le tonnerre tombe du haut de l'écran sur le haut de la fenêtre
+    const x = ax + w / 2;
+    eclair(x + alea(-90, 90), -10, x, yBas, {
+      couleur: '#dfeaff', halo: 'rgba(190,215,255,0.95)', epaisseur: 3.5,
+      duree: 750, descente: 85, rugosite: 0.38, pas: 7, branches: 0.05, echelleBr: 1
+    });
+    await wait(85);
+    if (s !== session) return;
+
+    // Impact, et Capri apparaît assise
+    impact(x, yBas);
+    walker.style.opacity = 1;
+    walker.animate([{ filter: 'brightness(3)' }, { filter: 'none' }], { duration: 260 });
+    await reforme(380);
+    if (s !== session) return;
+
+    etat = 'assise';
+    prochainSaut = performance.now() + alea(SAUT_MIN, SAUT_MAX);
+    raf = requestAnimationFrame(boucle);
+
+    // La fenêtre s'est fermée pendant qu'elle arrivait
+    if (fermeeEnAttente) { fermeeEnAttente = false; retourAuSol(); }
+  }
+
+  // La fenêtre a bougé : Capri la suit
+  function deplacerSurFenetre(r) {
+    if (etat !== 'assise') { if (fenetre) fenetre = r; return; }
+    fenetre = r;
+    const w = sprite.offsetWidth, h = sprite.offsetHeight;
+    cibleAx = borner(r.x + decalageX, 0, Math.max(0, window.innerWidth - w));
+    cibleAy = window.innerHeight - bordAssise(r, h);
+  }
+
+  // La fenêtre est fermée : Capri disparaît et revient au sol avec un nouvel éclair
+  async function retourAuSol() {
+    if (!enAnim) return;
+    const s = ++session;
+    cancelAnimationFrame(raf);
+    etat = 'cache';
+    fenetre = null;
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    walker.style.opacity = 0;
+    demarrerBalade(s);
+  }
+
+  ipcRenderer.on('fenetre-ouverte', (e, r) => { if (!occupee()) surFenetre(r); });
+  ipcRenderer.on('fenetre-bouge', (e, r) => deplacerSurFenetre(r));
+  ipcRenderer.on('fenetre-fermee', () => {
+    if (!enAnim || occupee()) return;
+    if (etat === 'assise') retourAuSol();
+    else if (fenetre) fermeeEnAttente = true;
+  });
+
+  // ===== Escapade : elle disparaît, puis marche sur une ligne de la grande fenêtre =====
+  async function lancerEscapade(s) {
+    let ok = false;
+    try { ok = await ipcRenderer.invoke('escapade-possible'); } catch (e) {}
+    if (s !== session) return;
+    if (!ok) {
+      prochaineEscapade = performance.now() + alea(4000, 8000);
+      etat = 'marche';
+      return;
+    }
+    lignePerdue = false;
+
+    // 1. Elle disparaît dans une salve de mini-éclairs
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    walker.style.opacity = 0;
+    await wait(560); // les éclairs s'éteignent : l'écran est propre pour la capture
+    if (s !== session) return;
+
+    // 2. On cherche les lignes de la fenêtre (texte, barres, boutons...)
+    let lignes = [];
+    try { lignes = await ipcRenderer.invoke('lignes'); } catch (e) {}
+    if (s !== session) return;
+
+    setPose(MARCHE);
+    await wait(60);
+    if (s !== session) return;
+    const w = sprite.offsetWidth, h = sprite.offsetHeight;
+    const bonnes = lignes.filter((l) => l.y >= h + 6 && l.y <= window.innerHeight - 8 && (l.x2 - l.x1) >= w + 80);
+
+    // Aucune ligne utilisable : elle revient simplement au sol
+    if (!bonnes.length) {
+      prochaineEscapade = performance.now() + alea(ESCAPADE_MIN, ESCAPADE_MAX);
+      cancelAnimationFrame(raf);
+      demarrerBalade(s);
+      return;
+    }
+
+    // 3. Une ligne au hasard (les longues ont plus de chances)
+    const total = bonnes.reduce((a, l) => a + (l.x2 - l.x1), 0);
+    let t = Math.random() * total;
+    let L = bonnes[0];
+    for (const l of bonnes) { t -= (l.x2 - l.x1); if (t <= 0) { L = l; break; } }
+    ligne = L;
+    adir = Math.random() < 0.5 ? -1 : 1;
+    ax = alea(L.x1, L.x2 - w);
+    ay = window.innerHeight - L.y;
+    cibleAy = ay;
+    majTransform(adir * SENS_MARCHE);
+    sprite.style.transform = ECRASE;
+
+    // 4. Le tonnerre tombe du haut de l'écran sur la ligne, et Capri apparaît dessus
+    const x = ax + w / 2;
+    eclair(x + alea(-90, 90), -10, x, L.y, {
+      couleur: '#dfeaff', halo: 'rgba(190,215,255,0.95)', epaisseur: 3.5,
+      duree: 750, descente: 85, rugosite: 0.38, pas: 7, branches: 0.05, echelleBr: 1
+    });
+    await wait(85);
+    if (s !== session) return;
+    impact(x, L.y);
+    walker.style.opacity = 1;
+    walker.animate([{ filter: 'brightness(3)' }, { filter: 'none' }], { duration: 260 });
+    await reforme(380);
+    if (s !== session) return;
+
+    etat = 'ligne';
+    finLigne = performance.now() + alea(LIGNE_MIN, LIGNE_MAX);
+    finSous = performance.now() + alea(1500, 3500); // elle marche d'abord un peu
+    if (lignePerdue) { lignePerdue = false; etat = 'transition'; quitterLigne(s); }
+  }
+
+  // Sur la ligne : passe de la marche à l'assise (ou l'inverse) avec mini-éclairs et écrasement
+  async function transformerLigne(assise, s) {
+    frappes();
+    await wait(150);
+    if (s !== session) return false;
+    await ecrase();
+    if (s !== session) return false;
+    if (assise) await setPoseAssise(); else setPose(MARCHE);
+    await wait(30);
+    if (s !== session) return false;
+    // Les pieds restent sur la ligne ; on la garde à l'intérieur de la ligne
+    ax = borner(ax, ligne.x1, Math.max(ligne.x1, ligne.x2 - sprite.offsetWidth));
+    await reforme(340);
+    return s === session;
+  }
+
+  // Elle disparaît de la ligne et revient par terre avec un nouvel éclair
+  async function quitterLigne(s) {
+    ipcRenderer.send('ligne-finie');
+    ligne = null;
+    frappes();
+    await wait(150);
+    if (s !== session) return;
+    await ecrase();
+    if (s !== session) return;
+    walker.style.opacity = 0;
+    cancelAnimationFrame(raf);
+    demarrerBalade(s);
+  }
+
+  // Une grande fenêtre est passée devant : elle descend de sa petite fenêtre et fera bientôt une escapade
+  ipcRenderer.on('fenetre-grande', () => {
+    if (!enAnim || occupee()) return;
+    escapadeVite = true;
+    if (etat === 'assise') retourAuSol();
+    else if (fenetre) fermeeEnAttente = true;
+    else prochaineEscapade = Math.min(prochaineEscapade, performance.now() + alea(2500, 4000));
+  });
+
+  // La fenêtre sur laquelle elle marchait a bougé, s'est fermée ou a perdu le premier plan
+  ipcRenderer.on('ligne-perdue', () => {
+    if (!enAnim || occupee()) return;
+    if (etat === 'ligne' || etat === 'ligne-assise') { etat = 'transition'; quitterLigne(session); }
+    else lignePerdue = true;
+  });
+
+  function boucle() {
+    const now = performance.now();
+    const w = sprite.offsetWidth;
+    const s = session;
+
+    if (etat === 'marche') {
+      ax += adir * VITESSE; // elle marche tout droit, sans rebond
+      // Stop motion : on change d'image toutes les DELAI_MARCHE millisecondes
+      if (now > prochaineImage) {
+        imageMarche = (imageMarche + 1) % IMAGES_MARCHE.length;
+        sprite.src = nomMarche(imageMarche);
+        prochaineImage = now + DELAI_MARCHE;
+      }
+      if (ax < 0) { ax = 0; adir = 1; }
+      if (ax > window.innerWidth - w) { ax = window.innerWidth - w; adir = -1; }
+      if (now > finEtat) {
+        etat = 'transition';
+        transformer(POSES[Math.floor(Math.random() * POSES.length)], s).then((ok) => {
+          if (!ok) return;
+          etat = 'pose';
+          finEtat = performance.now() + alea(3000, 7000);
+        });
+      } else if (now > prochaineEscapade) {
+        etat = 'transition';
+        lancerEscapade(s);
+      } else if (now > prochaineBulle) {
+        etat = 'transition';
+        parlerAssise(s);
+      }
+    } else if (etat === 'ligne' || etat === 'ligne-assise') {
+      if (now > finLigne) {
+        // Fini : elle revient par terre
+        etat = 'transition';
+        quitterLigne(s);
+      } else if (etat === 'ligne') {
+        // Elle marche sur sa ligne et fait demi-tour aux extrémités
+        ax += adir * VITESSE;
+        if (now > prochaineImage) {
+          imageMarche = (imageMarche + 1) % IMAGES_MARCHE.length;
+          sprite.src = nomMarche(imageMarche);
+          prochaineImage = now + DELAI_MARCHE;
+        }
+        if (ax < ligne.x1) { ax = ligne.x1; adir = 1; }
+        if (ax > ligne.x2 - w) { ax = ligne.x2 - w; adir = -1; }
+        if (now > finSous) {
+          // Elle s'arrête et s'assoit
+          etat = 'transition';
+          transformerLigne(true, s).then((ok) => {
+            if (!ok) return;
+            if (lignePerdue) { lignePerdue = false; quitterLigne(s); return; }
+            etat = 'ligne-assise';
+            finSous = performance.now() + alea(ASSISE_LIGNE_MIN, ASSISE_LIGNE_MAX);
+          });
+        }
+      } else if (now > finSous) {
+        // Elle se relève et repart marcher
+        etat = 'transition';
+        adir = Math.random() < 0.5 ? -1 : 1;
+        transformerLigne(false, s).then((ok) => {
+          if (!ok) return;
+          if (lignePerdue) { lignePerdue = false; quitterLigne(s); return; }
+          etat = 'ligne';
+          finSous = performance.now() + alea(MARCHE_LIGNE_MIN, MARCHE_LIGNE_MAX);
+        });
+      }
+    } else if (etat === 'pose' && now > finEtat) {
+      etat = 'transition';
+      adir = Math.random() < 0.5 ? -1 : 1;
+      transformer(MARCHE, s).then((ok) => {
+        if (!ok) return;
+        etat = 'marche';
+        finEtat = performance.now() + alea(4000, 10000);
+      });
+    } else if (etat === 'assise') {
+      // Elle reste assise sur sa fenêtre et la suit en douceur si elle bouge
+      ax += (cibleAx - ax) * 0.25;
+      ay += (cibleAy - ay) * 0.25;
+      if (now > prochainSaut) changerDeCoin();
+    } else if (etat === 'attrapee') {
+      // Elle pend au curseur par les mains et se balance comme un pendule
+      const dt = Math.min(0.033, Math.max(0.001, (now - derniereFrame) / 1000));
+      derniereFrame = now;
+      const h = HAUTEUR_ATTRAPEE * ECHELLE, wA = h * RATIO_ATTRAPEE;
+      vs += (((curX - curXAvant) / dt) - vs) * 0.3;    // vitesse de la souris, lissée
+      vsY += (((curY - curYAvant) / dt) - vsY) * 0.3;
+      curXAvant = curX; curYAvant = curY;
+      const L = h * 0.55;
+      const pas = 4, d = dt / pas;
+      for (let i = 0; i < pas; i++) {
+        const alpha = -(GRAVITE / L) * Math.sin(phi) - (TRAINEE * vs) / L - AMORTI * omega;
+        omega += alpha * d;
+        phi += omega * d;
+        if (phi > ANGLE_MAX) { phi = ANGLE_MAX; omega *= -0.3; }
+        if (phi < -ANGLE_MAX) { phi = -ANGLE_MAX; omega *= -0.3; }
+      }
+      rot = -phi * 180 / Math.PI;
+      ax = curX - PIVOT_X * wA;
+      ay = window.innerHeight - curY - h + PIVOT_Y * h;
+      // Traînée de fantômes glitch derrière son corps
+      emettreTrainee(now, curX + Math.sin(phi) * h * 0.5, curY + Math.cos(phi) * h * 0.5);
+      // De temps en temps, elle dit une phrase
+      if (!bulleActive && now > prochaineBulleAtt) {
+        direPhrase(PHRASES_ATTRAPEE, 2200, 700);
+        prochaineBulleAtt = now + alea(BULLE_ATT_MIN, BULLE_ATT_MAX);
+      }
+    } else if (etat === 'chute') {
+      // Lâchée : elle garde son élan, tombe au sol et s'écrase
+      const dt = Math.min(0.033, Math.max(0.001, (now - derniereFrame) / 1000));
+      derniereFrame = now;
+      vChute += GRAVITE_CHUTE * dt;
+      ay -= vChute * dt;
+      ax = borner(ax + vxChute * dt, 0, Math.max(0, window.innerWidth - sprite.offsetWidth));
+      vxChute *= Math.pow(0.15, dt);
+      phi *= Math.pow(0.001, dt);
+      rot = -phi * 180 / Math.PI;
+      if (ay <= 0) atterrir(s);
+    }
+
+    // La bulle reste au-dessus de Capri tant qu'elle parle, et disparaît dès qu'elle fait autre chose
+    if (bulleActive && etat !== 'parle' && etat !== 'attrapee' && etat !== 'ecrasee') cacherBulle();
+    else if (bulleActive) positionnerBulle();
+
+    const flip = pose === MARCHE ? adir * SENS_MARCHE : 1;
+    majTransform(flip);
+    raf = requestAnimationFrame(boucle);
+  }
+
+  // Le reste de l'écran reste cliquable : seule Capri capte la souris
+  document.addEventListener('dragstart', (e) => e.preventDefault()); // aucun glisser-déposer d'image
+  walker.addEventListener('mouseenter', () => { survolCapri = true; majClic(); });
+  walker.addEventListener('mouseleave', () => { survolCapri = false; majClic(); });
+
+  // ===== Attraper Capri : on reste appuyé sur elle, elle s'accroche au curseur =====
+  function attraperCapri() {
+    if (!enAnim) return;
+    session++;                        // annule ce qu'elle était en train de faire
+    cancelAnimationFrame(raf);
+    sprite.getAnimations().forEach((a) => a.cancel());
+    walker.getAnimations().forEach((a) => a.cancel());
+    sprite.style.transform = '';
+    walker.style.opacity = 1;
+    cacherBulle();
+    ligne = null; ipcRenderer.send('ligne-finie');
+    fenetre = null; fermeeEnAttente = false; lignePerdue = false;
+
+    tenue = true;
+    majClic();
+    pose = 'attrapee';
+    sprite.src = IMAGE_ATTRAPEE;
+    sprite.style.height = HAUTEUR_ATTRAPEE * ECHELLE + 'px';
+    sprite.style.width = 'auto';
+    walker.style.transformOrigin = (PIVOT_X * 100) + '% ' + (PIVOT_Y * 100) + '%';
+
+    phi = 0; omega = 0; vs = 0; vsY = 0; accX = 0; accY = 0;
+    curXAvant = curX; curYAvant = curY;
+    histCorps = [];
+    derniereFrame = performance.now();
+    prochaineBulleAtt = derniereFrame + alea(1500, 3000);
+    etat = 'attrapee';
+    raf = requestAnimationFrame(boucle);
+  }
+
+  // On relâche : elle tombe en gardant la vitesse de ta souris
+  function lacherCapri() {
+    if (etat !== 'attrapee') return;
+    tenue = false;
+    survolCapri = false;
+    majClic();
+    cacherBulle();
+    vChute = borner(vsY, -2000, 2000);
+    vxChute = borner(vs, -1800, 1800);
+    derniereFrame = performance.now();
+    etat = 'chute';
+  }
+
+  // Appui court sur Capri : retour à la fenêtre d'appel (comme "Désanimer").
+  // Appui long, ou souris qui bouge : on l'attrape.
+  walker.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !enAnim || tenue) return;
+    if (etat === 'puce' || etat === 'reboot') return; // Capri est absente ou en réinitialisation
+    e.preventDefault(); // empêche le navigateur de "saisir" l'image (glisser-déposer natif)
+    walker.setPointerCapture(e.pointerId);
+    curX = e.clientX; curY = e.clientY;
+    const x0 = e.clientX, y0 = e.clientY;
+    let attrapee = false;
+    const attraper = () => { if (!attrapee) { attrapee = true; attraperCapri(); } };
+    const minuteur = setTimeout(attraper, DELAI_ATTRAPE);
+    const bouge = (m) => {
+      curX = m.clientX; curY = m.clientY;
+      if (!attrapee && Math.hypot(curX - x0, curY - y0) > 6) { clearTimeout(minuteur); attraper(); }
+    };
+    const nettoyer = () => {
+      clearTimeout(minuteur);
+      walker.removeEventListener('pointermove', bouge);
+      walker.removeEventListener('pointerup', relache);
+      walker.removeEventListener('pointercancel', annule);
+    };
+    const relache = () => { nettoyer(); if (attrapee) lacherCapri(); else desanimer(); };
+    const annule = () => { nettoyer(); if (attrapee) lacherCapri(); };
+    walker.addEventListener('pointermove', bouge);
+    walker.addEventListener('pointerup', relache);
+    walker.addEventListener('pointercancel', annule);
+  });
+</script>
+</body>
+</html>

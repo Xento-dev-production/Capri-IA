@@ -1,0 +1,12 @@
+{
+  "name": "capri",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "electron": "*"
+  }
+}

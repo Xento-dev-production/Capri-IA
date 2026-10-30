@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAPRI // LECTEUR</title>
+<style>
+  :root { --vert: #00ffa3; --rouge: #ff2e63; --cadre: #ff4d5a; --cyan: #27e6ff; --fond: #050508; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: var(--fond);
+    font-family: Consolas, "Courier New", monospace; color: #e8fff6; user-select: none;
+  }
+  body {
+    display: flex; flex-direction: column; padding: 12px; gap: 10px;
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(255, 46, 99, 0.16), transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(39, 230, 255, 0.12), transparent 50%),
+      var(--fond);
+  }
+  /* Lignes d'écran + petits points rouges sur toute la page */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 50; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5;
+    background-image: radial-gradient(rgba(255, 77, 90, 0.35) 1px, transparent 1.6px);
+    background-size: 22px 22px;
+  }
+  body > * { position: relative; z-index: 1; }
+
+  /* En-tête : titre qui se décode */
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+  .conn { font-size: 9px; letter-spacing: 2px; color: var(--cadre); margin-bottom: 3px; }
+  #titre {
+    display: flex; align-items: center; gap: 10px; min-width: 0;
+    font-family: Bahnschrift, "Segoe UI", Arial, sans-serif; font-size: 22px; font-weight: bold;
+    letter-spacing: 2px; color: var(--cyan); text-shadow: 0 0 8px rgba(39, 230, 255, 0.55);
+  }
+  #titre::before { content: ""; flex-shrink: 0; width: 10px; height: 10px; background: var(--rouge); }
+  #titreTxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #fermer {
+    flex-shrink: 0; height: 28px; width: 34px; background: #000; color: var(--cadre);
+    border: 1px solid var(--cadre); font-family: inherit; font-size: 14px; cursor: pointer;
+  }
+  #fermer:hover { background: rgba(255, 77, 90, 0.22); box-shadow: 0 0 8px rgba(255, 77, 90, 0.5); }
+
+  /* Cadre vidéo : contour rouge aux coins coupés, comme dans l'appel */
+  .frame {
+    --c: 18px; flex: 1; min-height: 0; background: var(--cadre); padding: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%);
+    animation: alerte 1.6s steps(2, start) infinite;
+  }
+  @keyframes alerte { 50% { background: var(--rouge); } }
+  .frame-in {
+    --d: calc(var(--c) - 2px); position: relative; height: 100%; overflow: hidden; background: #000;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--d)), calc(100% - var(--d)) 100%, 0 100%);
+  }
+  @keyframes flick {
+    0%, 100% { filter: none; }
+    41% { filter: brightness(1.6) contrast(1.3); }
+    42% { filter: none; }
+    77% { filter: brightness(0.6) hue-rotate(40deg); }
+    78% { filter: none; }
+  }
+  video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; cursor: pointer; }
+
+  /* Bandes de glitch qui sautent par-dessus la vidéo */
+  .g { position: absolute; inset: 0; pointer-events: none; clip-path: inset(0 0 100% 0); }
+  .g1 { background: rgba(0, 255, 163, 0.16); animation: glitchA 3.6s steps(1) infinite; }
+  .g2 { background: rgba(255, 46, 99, 0.16); animation: glitchB 4.7s steps(1) infinite; }
+  @keyframes glitchA {
+    0%, 100% { clip-path: inset(0 0 100% 0); }
+    10% { clip-path: inset(20% 0 65% 0); transform: translateX(-9px); }
+    12% { clip-path: inset(55% 0 30% 0); transform: translateX(11px); }
+    14% { clip-path: inset(0 0 100% 0); }
+    58% { clip-path: inset(70% 0 12% 0); transform: translateX(8px); }
+    60% { clip-path: inset(0 0 100% 0); }
+  }
+  @keyframes glitchB {
+    0%, 100% { clip-path: inset(0 0 100% 0); }
+    22% { clip-path: inset(35% 0 52% 0); transform: translateX(10px); }
+    24% { clip-path: inset(0 0 100% 0); }
+    71% { clip-path: inset(12% 0 75% 0); transform: translateX(-12px); }
+    73% { clip-path: inset(0 0 100% 0); }
+  }
+  .coin {
+    position: absolute; z-index: 3; font-size: 9px; letter-spacing: 2px; color: var(--cadre); pointer-events: none;
+    text-shadow: 0 0 6px rgba(255, 77, 90, 0.6);
+  }
+  .coin.hg { left: 10px; top: 8px; } .coin.hd { right: 10px; top: 8px; }
+  .coin.hd b { display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: var(--rouge); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* Message au centre (clic pour lancer, erreur, fin) */
+  #voile {
+    position: absolute; inset: 0; z-index: 4; display: none; align-items: center; justify-content: center; text-align: center;
+    background: rgba(0, 0, 0, 0.72); cursor: pointer;
+  }
+  #voile.on { display: flex; }
+  #voile div {
+    padding: 10px 22px; border: 1px solid var(--vert); color: var(--vert); letter-spacing: 3px; font-size: 13px;
+    text-shadow: 0 0 7px rgba(0, 255, 163, 0.6); max-width: 80%; line-height: 1.6;
+  }
+  #voile.err div { border-color: var(--rouge); color: var(--rouge); text-shadow: 0 0 7px rgba(255, 46, 99, 0.6); }
+
+  /* Spectre : barres segmentées qui montent et descendent */
+  #spectre {
+    display: flex; align-items: flex-end; gap: 3px; height: 44px; flex-shrink: 0; padding: 0 2px;
+    border-bottom: 1px solid rgba(0, 255, 163, 0.3);
+  }
+  #spectre i {
+    flex: 1; height: 4%; min-height: 2px; display: block;
+    background: repeating-linear-gradient(0deg, var(--vert) 0 4px, transparent 4px 6px);
+    box-shadow: 0 0 5px rgba(0, 255, 163, 0.5);
+  }
+  #spectre i:nth-child(3n) { background: repeating-linear-gradient(0deg, var(--cyan) 0 4px, transparent 4px 6px); box-shadow: 0 0 5px rgba(39, 230, 255, 0.5); }
+  #spectre i:nth-child(7n) { background: repeating-linear-gradient(0deg, var(--rouge) 0 4px, transparent 4px 6px); box-shadow: 0 0 5px rgba(255, 46, 99, 0.5); }
+
+  /* Commandes */
+  .ctrl { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  #play {
+    --c: 9px; flex-shrink: 0; width: 56px; height: 34px; padding: 2px; border: 0; cursor: pointer; background: var(--vert);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%);
+  }
+  #play span {
+    display: flex; align-items: center; justify-content: center; height: 100%; background: #000; color: var(--vert); font-size: 15px;
+    text-shadow: 0 0 7px rgba(0, 255, 163, 0.7);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  }
+  #play:hover { background: var(--cyan); }
+  #play:hover span { color: var(--cyan); }
+  .temps { flex-shrink: 0; font-size: 12px; letter-spacing: 1px; color: var(--cyan); min-width: 92px; text-align: center; }
+
+  /* Barre de progression segmentée (on peut cliquer / glisser dedans) */
+  #barre { flex: 1; height: 22px; padding: 4px; border: 1px solid var(--cadre); background: #000; cursor: pointer; touch-action: none; }
+  #fill {
+    height: 100%; width: 0%; position: relative;
+    background: repeating-linear-gradient(90deg, var(--vert) 0 7px, transparent 7px 9px); box-shadow: 0 0 7px var(--vert);
+  }
+  #fill::after { content: ""; position: absolute; right: -2px; top: -4px; bottom: -4px; width: 2px; background: #fff; box-shadow: 0 0 6px #fff; }
+
+  #muet { flex-shrink: 0; width: 28px; height: 28px; background: #000; color: var(--cyan); border: 1px solid var(--cyan); cursor: pointer; font-family: inherit; font-size: 13px; padding: 0; }
+  #muet:hover { background: rgba(39, 230, 255, 0.2); }
+  #vol { flex-shrink: 0; width: 84px; height: 22px; padding: 4px; border: 1px solid var(--cyan); background: #000; cursor: pointer; touch-action: none; }
+  #volFill { height: 100%; width: 100%; background: repeating-linear-gradient(90deg, var(--cyan) 0 5px, transparent 5px 7px); box-shadow: 0 0 5px var(--cyan); }
+
+  footer { flex-shrink: 0; display: flex; justify-content: space-between; gap: 10px; font-size: 9px; letter-spacing: 2px; color: var(--cadre); }
+  #etat { color: var(--vert); }
+  button:focus-visible, #barre:focus-visible, #vol:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .frame, .frame-in, .g1, .g2 { animation: none; } }
+  @media (max-width: 560px) { #vol, #muet { display: none; } .temps { min-width: 0; font-size: 10px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="min-width:0">
+    <div class="conn" id="conn">LECTEUR // CONNEXION 000.00.00</div>
+    <div id="titre"><span id="titreTxt">CAPRI</span></div>
+  </div>
+  <button id="fermer" title="Fermer (Échap)">✕</button>
+</header>
+
+<div class="frame"><div class="frame-in">
+  <video id="v" playsinline preload="auto"></video>
+  <div class="g g1"></div><div class="g g2"></div>
+  <div class="coin hg" id="cHG">◼ NIGHT CITY FM</div>
+  <div class="coin hd"><b></b><span id="cHD">EN LIGNE</span></div>
+  <div id="voile"><div id="voileTxt"></div></div>
+</div></div>
+
+<div id="spectre" aria-hidden="true"></div>
+
+<div class="ctrl">
+  <button id="play" title="Lecture / pause (espace)"><span id="playIco">▶</span></button>
+  <div class="temps" id="temps">0:00 / 0:00</div>
+  <div id="barre" tabindex="0" role="slider" aria-label="Position"><div id="fill"></div></div>
+  <button id="muet" title="Son">♪</button>
+  <div id="vol" tabindex="0" role="slider" aria-label="Volume"><div id="volFill"></div></div>
+</div>
+
+<footer><span id="etat">PRÊT</span><span id="aide">ESPACE : PAUSE  //  ← → : ±5 S  //  ÉCHAP : FERMER</span></footer>
+
+<script>
+  const P = new URLSearchParams(location.search);
+  const fichier = P.get('f') || '';
+  const titre = P.get('t') || 'CAPRI';
+  const EN = P.get('l') === 'en';
+  const T = EN ? {
+    pret: 'READY', lecture: 'PLAYING', pause: 'PAUSED', fin: 'TRACK ENDED', rejouer: 'CLICK TO REPLAY', lancer: 'CLICK TO START',
+    erreur: 'FILE NOT FOUND OR UNREADABLE', enligne: 'ONLINE', aide: 'SPACE: PAUSE  //  ← → : ±5 S  //  ESC: CLOSE', conn: 'PLAYER // CONNECTION '
+  } : {
+    pret: 'PRÊT', lecture: 'LECTURE', pause: 'PAUSE', fin: 'FIN DU TITRE', rejouer: 'CLIQUE POUR REJOUER', lancer: 'CLIQUE POUR LANCER',
+    erreur: 'FICHIER INTROUVABLE OU ILLISIBLE', enligne: 'EN LIGNE', aide: 'ESPACE : PAUSE  //  ← → : ±5 S  //  ÉCHAP : FERMER', conn: 'LECTEUR // CONNEXION '
+  };
+  const $ = (id) => document.getElementById(id);
+  const v = $('v'), voile = $('voile'), voileTxt = $('voileTxt');
+  document.title = 'CAPRI // ' + titre;
+  $('aide').textContent = T.aide;
+  $('cHD').textContent = T.enligne;
+  $('etat').textContent = T.pret;
+  const chiffres = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
+  $('conn').textContent = T.conn + chiffres(3) + '.' + chiffres(2) + '.' + chiffres(2);
+
+  // Le titre se "décode" : des caractères au hasard deviennent peu à peu le vrai texte
+  (function decoder(el, texte, duree) {
+    const CH = '01ABCDEF#<>/$%', t0 = performance.now();
+    const iv = setInterval(() => {
+      const p = Math.min(1, (performance.now() - t0) / duree), n = Math.floor(p * texte.length);
+      let r = texte.slice(0, n);
+      for (let i = n; i < texte.length; i++) r += texte[i] === ' ' ? ' ' : CH[Math.floor(Math.random() * CH.length)];
+      el.textContent = r;
+      if (p >= 1) { clearInterval(iv); el.textContent = texte; }
+    }, 40);
+  })($('titreTxt'), titre, 900);
+
+  // ----- Signal de vie : capri_ouvrir.js sait ainsi que CE lecteur est ouvert (donc pas besoin d'une 2e page) -----
+  const vivant = () => { try { localStorage.setItem('capriLecteurVivant', String(Date.now())); } catch (e) {} };
+  vivant(); setInterval(vivant, 500);
+  window.addEventListener('beforeunload', () => { try { localStorage.removeItem('capriLecteurVivant'); } catch (e) {} });
+  window.addEventListener('storage', (e) => { if (e.key === 'capriLecteurFermer') window.close(); });   // « arrête la musique »
+
+  // ----- Lecture -----
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  function montrer(msg, err) { voileTxt.textContent = msg; voile.className = err ? 'on err' : 'on'; }
+  function cacher() { voile.className = ''; }
+
+  v.src = fichier;
+  v.volume = 0.8;
+  v.addEventListener('error', () => { montrer(T.erreur, true); $('etat').textContent = 'ERREUR'; });
+  v.addEventListener('loadedmetadata', maj);
+  v.addEventListener('timeupdate', maj);
+  v.addEventListener('play', () => { $('playIco').textContent = '❚❚'; $('etat').textContent = T.lecture; cacher(); brancherAnalyseur(); });
+  v.addEventListener('pause', () => { if (!v.ended) { $('playIco').textContent = '▶'; $('etat').textContent = T.pause; } });
+  v.addEventListener('ended', () => { $('playIco').textContent = '▶'; $('etat').textContent = T.fin; montrer(T.fin + '  //  ' + T.rejouer); });
+  v.play().catch(() => { montrer(T.lancer); });   // si le navigateur bloque le lancement automatique
+
+  // Si la lecture se fige (le temps n'avance plus alors qu'on est en lecture), on recharge et on reprend au même endroit
+  function relancer() {
+    const t = v.currentTime || 0;
+    $('etat').textContent = EN ? 'RECONNECTING...' : 'RECONNEXION...';
+    v.src = fichier;
+    v.load();
+    v.addEventListener('loadedmetadata', function f() {
+      v.removeEventListener('loadedmetadata', f);
+      try { v.currentTime = t; } catch (e) {}
+      v.play().catch(() => { montrer(T.lancer); });
+    });
+  }
+  let dernierT = -1, fige = 0;
+  setInterval(() => {
+    if (v.paused || v.ended) { fige = 0; dernierT = v.currentTime; return; }
+    if (Math.abs(v.currentTime - dernierT) < 0.01) fige++; else fige = 0;
+    dernierT = v.currentTime;
+    if (fige >= 3) { fige = 0; relancer(); }
+  }, 1000);
+
+  function bascule() {
+    if (v.error) { relancer(); return; }
+    if (v.ended) v.currentTime = 0;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+  }
+  $('play').addEventListener('click', bascule);
+  v.addEventListener('click', bascule);
+  voile.addEventListener('click', bascule);
+  $('fermer').addEventListener('click', () => window.close());
+
+  function maj() {
+    const d = v.duration || 0;
+    $('fill').style.width = (d ? (v.currentTime / d) * 100 : 0) + '%';
+    $('temps').textContent = fmt(v.currentTime) + ' / ' + fmt(d);
+  }
+
+  // Barre de progression et volume : clic ou glisser
+  function glisser(el, appliquer) {
+    el.addEventListener('pointerdown', (e) => {
+      el.setPointerCapture(e.pointerId);
+      const f = (m) => { const r = el.getBoundingClientRect(); appliquer(Math.min(1, Math.max(0, (m.clientX - r.left) / r.width))); };
+      f(e);
+      const fin = () => { el.removeEventListener('pointermove', f); el.removeEventListener('pointerup', fin); el.removeEventListener('pointercancel', fin); };
+      el.addEventListener('pointermove', f); el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin);
+    });
+  }
+  glisser($('barre'), (p) => { if (v.duration) { v.currentTime = p * v.duration; maj(); } });
+  const majVol = () => { $('volFill').style.width = (v.muted ? 0 : v.volume * 100) + '%'; $('muet').textContent = v.muted || v.volume === 0 ? '×' : '♪'; };
+  glisser($('vol'), (p) => { v.muted = false; v.volume = p; majVol(); });
+  $('muet').addEventListener('click', () => { v.muted = !v.muted; majVol(); });
+  majVol();
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') window.close();
+    else if (e.key === ' ') { e.preventDefault(); bascule(); }
+    else if (e.key === 'ArrowRight') v.currentTime = Math.min(v.duration || 0, v.currentTime + 5);
+    else if (e.key === 'ArrowLeft') v.currentTime = Math.max(0, v.currentTime - 5);
+    else if (e.key === 'ArrowUp') { v.volume = Math.min(1, v.volume + 0.1); majVol(); }
+    else if (e.key === 'ArrowDown') { v.volume = Math.max(0, v.volume - 0.1); majVol(); }
+  });
+
+  // ----- Spectre : vraies fréquences si le son est lisible, sinon simulation -----
+  const NB = 32, barres = [];
+  for (let i = 0; i < NB; i++) { const b = document.createElement('i'); $('spectre').appendChild(b); barres.push(b); }
+  const ANALYSE_REELLE = false;   // mets true pour remettre le vrai spectre (mais c'est ce qui risque de couper le son)
+  let analyseur = null, donnees = null, ctxAudio = null, vraies = ANALYSE_REELLE, zeros = 0;
+  function brancherAnalyseur() {
+    if (analyseur || !ANALYSE_REELLE) return;
+    try {
+      ctxAudio = new (window.AudioContext || window.webkitAudioContext)();
+      const src = ctxAudio.createMediaElementSource(v);
+      analyseur = ctxAudio.createAnalyser();
+      analyseur.fftSize = 128;
+      src.connect(analyseur); analyseur.connect(ctxAudio.destination);
+      donnees = new Uint8Array(analyseur.frequencyBinCount);
+    } catch (e) { analyseur = null; vraies = false; }
+  }
+  const niveaux = new Array(NB).fill(4);
+  function dessiner(t) {
+    requestAnimationFrame(dessiner);
+    const joue = !v.paused && !v.ended;
+    let reel = false;
+    if (joue && analyseur && vraies) {
+      analyseur.getByteFrequencyData(donnees);
+      let somme = 0;
+      for (let i = 0; i < NB; i++) { const x = donnees[Math.min(donnees.length - 1, Math.floor(i * 0.9))]; niveaux[i] = 4 + (x / 255) * 96; somme += x; }
+      if (somme === 0) { if (++zeros > 90) vraies = false; } else { zeros = 0; reel = true; }
+    }
+    if (!reel) {                                   // simulation (ou repos quand c'est en pause)
+      for (let i = 0; i < NB; i++) {
+        const cible = joue ? 14 + 70 * Math.abs(Math.sin(t / 260 + i * 0.7) * Math.cos(t / 410 + i * 0.31)) + Math.random() * 14 : 4;
+        niveaux[i] += (cible - niveaux[i]) * 0.25;
+      }
+    }
+    for (let i = 0; i < NB; i++) barres[i].style.height = niveaux[i].toFixed(1) + '%';
+  }
+  requestAnimationFrame(dessiner);
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Test de voix de Capri</title>
+<style>
+  body {
+    margin: 0; padding: 20px; background: #05050a; color: #e8fff6;
+    font-family: Consolas, "Courier New", monospace;
+  }
+  h1 { font-size: 18px; color: #27e6ff; letter-spacing: 2px; margin-top: 0; }
+  label { display: block; margin-top: 16px; font-size: 13px; color: #00ffa3; }
+  select, textarea, button {
+    width: 100%; box-sizing: border-box; margin-top: 6px; padding: 8px;
+    background: #000; color: #e8fff6; border: 1px solid #ff4d5a;
+    font-family: inherit; font-size: 13px;
+  }
+  textarea { height: 70px; resize: none; }
+  input[type=range] { width: 100%; margin-top: 6px; accent-color: #ff4d5a; }
+  button { cursor: pointer; color: #ff4d5a; font-weight: bold; letter-spacing: 2px; }
+  button:hover { background: #1a0a0d; }
+  .presets { display: flex; gap: 6px; }
+  .presets button { font-size: 11px; letter-spacing: 0; }
+  #resultat {
+    margin-top: 18px; padding: 10px; border: 1px dashed #27e6ff;
+    color: #27e6ff; font-size: 13px; line-height: 1.6; white-space: pre;
+  }
+  #info { margin-top: 8px; font-size: 12px; color: #ff4d5a; }
+</style>
+</head>
+<body>
+
+<h1>TEST DE VOIX : CAPRI</h1>
+
+<label>Voix</label>
+<select id="voix"></select>
+<div id="info"></div>
+
+<label>Hauteur (plus haut = plus aigu) : <span id="vh"></span></label>
+<input type="range" id="hauteur" min="0.5" max="2" step="0.05" value="1.25">
+
+<label>Vitesse (plus haut = plus rapide) : <span id="vv"></span></label>
+<input type="range" id="vitesse" min="0.5" max="2" step="0.05" value="1.1">
+
+<label>Phrase à dire</label>
+<textarea id="phrase">Salut choom, c'est Capri. Qu'est-ce qu'on fait aujourd'hui ?</textarea>
+
+<button id="ecouter">▶ ÉCOUTER</button>
+
+<label>Préréglages rapides</label>
+<div class="presets">
+  <button data-h="1.5" data-v="1.2">Aiguë, rapide</button>
+  <button data-h="0.7" data-v="0.9">Grave, posée</button>
+  <button data-h="1.0" data-v="1.0">Neutre</button>
+</div>
+
+<div id="resultat"></div>
+
+<script>
+  const selVoix = document.getElementById('voix');
+  const hauteur = document.getElementById('hauteur');
+  const vitesse = document.getElementById('vitesse');
+  const phrase = document.getElementById('phrase');
+  let voix = [];
+
+  function chargerVoix() {
+    const toutes = speechSynthesis.getVoices();
+    const fr = toutes.filter((v) => v.lang.toLowerCase().startsWith('fr'));
+    voix = fr.length ? fr : toutes;
+    selVoix.innerHTML = '';
+    voix.forEach((v, i) => {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = v.name + ' (' + v.lang + ')';
+      selVoix.appendChild(o);
+    });
+    document.getElementById('info').textContent = fr.length
+      ? ''
+      : "Aucune voix française trouvée : toutes les voix sont affichées.";
+    afficher();
+  }
+  chargerVoix();
+  speechSynthesis.onvoiceschanged = chargerVoix;
+
+  function afficher() {
+    document.getElementById('vh').textContent = hauteur.value;
+    document.getElementById('vv').textContent = vitesse.value;
+    const v = voix[selVoix.value];
+    document.getElementById('resultat').textContent =
+      'Valeurs à me donner :\n' +
+      'VOIX     = ' + (v ? v.name : '?') + '\n' +
+      'HAUTEUR  = ' + hauteur.value + '\n' +
+      'VITESSE  = ' + vitesse.value;
+  }
+
+  function ecouter() {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(phrase.value);
+    const v = voix[selVoix.value];
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'fr-FR'; }
+    u.pitch = parseFloat(hauteur.value);
+    u.rate = parseFloat(vitesse.value);
+    speechSynthesis.speak(u);
+  }
+
+  document.getElementById('ecouter').addEventListener('click', ecouter);
+  [hauteur, vitesse, selVoix].forEach((el) => el.addEventListener('input', afficher));
+
+  document.querySelectorAll('.presets button').forEach((b) => {
+    b.addEventListener('click', () => {
+      hauteur.value = b.dataset.h;
+      vitesse.value = b.dataset.v;
+      afficher();
+      ecouter();
+    });
+  });
+</script>
+</body>
+</html>
